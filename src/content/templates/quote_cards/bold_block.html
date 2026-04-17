@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>quote</title>
+<style>
+$css
+.frame {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 60px 60px 90px;
+}
+.accent-block {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 38%;
+  background: $accent;
+}
+.kicker {
+  position: absolute;
+  top: 80px;
+  left: 80px;
+  font-family: '$body_font', sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: $bg;
+  opacity: 0.85;
+}
+.quote {
+  font-family: '$heading_font', sans-serif;
+  font-weight: 900;
+  font-size: 130px;
+  line-height: 0.96;
+  letter-spacing: -3px;
+  color: $fg;
+  text-transform: uppercase;
+  max-width: 98%;
+}
+.byline {
+  margin-top: 36px;
+  font-family: '$body_font', sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: $accent;
+}
+.byline::before {
+  content: "— ";
+}
+.watermark {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 18px 24px;
+  font-family: '$body_font', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: $bg;
+}
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="accent-block"></div>
+  <div class="kicker">note</div>
+  <div class="watermark">$watermark</div>
+  <div class="quote">$quote</div>
+  <div class="byline">$byline</div>
+</div>
+</body>
+</html>

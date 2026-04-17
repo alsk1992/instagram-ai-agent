@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ig-agent — {{ niche }}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #1a1a1d;
+    --panel-2: #232327;
+    --fg: #f0f0ee;
+    --muted: #9a9a96;
+    --accent: #c9a961;
+    --ok: #67c267;
+    --warn: #e0b250;
+    --err: #e06a5c;
+    --border: #2c2c30;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+          background: var(--bg); color: var(--fg); }
+  header { padding: 24px 32px; border-bottom: 1px solid var(--border);
+           display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: -0.3px; }
+  header .pill { padding: 4px 10px; border-radius: 999px; background: var(--panel);
+                 color: var(--muted); font-size: 12px; }
+  main { padding: 24px 32px; display: grid; gap: 20px;
+         grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+            padding: 18px 20px; }
+  section h2 { margin: 0 0 14px; font-size: 13px; font-weight: 700;
+               text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .stat { background: var(--panel-2); padding: 12px; border-radius: 8px; }
+  .stat .label { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+  .stat .value { font-size: 22px; font-weight: 700; margin-top: 4px; letter-spacing: -0.5px; }
+  .stat.ok .value { color: var(--ok); }
+  .stat.warn .value { color: var(--warn); }
+  .stat.err .value { color: var(--err); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-size: 11px; font-weight: 700; }
+  td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  td.muted { color: var(--muted); }
+  .caption-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; background: var(--panel-2); }
+  .ok  { color: var(--ok);  } .warn{color:var(--warn);} .err{color:var(--err);}
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--panel-2);
+         color: var(--muted); font-size: 11px; margin-right: 4px; }
+  .tag.on { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+  .mix-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--panel-2); }
+  .mix-bar span { display: block; height: 100%; }
+  .mix-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .mix-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 6px; vertical-align: middle; }
+  .banner { margin: 0 32px 0; padding: 14px 16px; border-radius: 8px;
+            background: color-mix(in srgb, var(--err) 15%, transparent);
+            color: var(--err); border: 1px solid color-mix(in srgb, var(--err) 30%, transparent); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+         background: var(--panel-2); padding: 1px 6px; border-radius: 4px; }
+  .footer { padding: 20px 32px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>{{ niche }}</h1>
+    <div class="pill" style="margin-top: 6px;">{{ audience }}</div>
+  </div>
+  <div>
+    <span class="pill">{{ 'commercial' if commercial else 'non-commercial' }}</span>
+    {% for p in providers %}<span class="pill">{{ p }}</span>{% endfor %}
+  </div>
+</header>
+
+{% if backoff_until %}
+  <div class="banner">
+    <strong>Cooldown active</strong> — {{ backoff_reason or 'unknown reason' }} until <code>{{ backoff_until }}</code>.
+    All IG calls are suspended until this expires.
+  </div>
+{% endif %}
+
+<main>
+
+  <section>
+    <h2>queue</h2>
+    <div class="stat-grid">
+      <div class="stat"><div class="label">total</div><div class="value">{{ queue_total }}</div></div>
+      {% for status, count in queue_by_status.items() %}
+        <div class="stat"><div class="label">{{ status }}</div><div class="value">{{ count }}</div></div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section>
+    <h2>warmup</h2>
+    <div class="stat-grid">
+      <div class="stat {{ 'ok' if warmup.day and warmup.day > 14 else 'warn' }}">
+        <div class="label">day</div>
+        <div class="value">{{ warmup.day or '—' }}</div>
+      </div>
+      <div class="stat">
+        <div class="label">phase</div>
+        <div class="value" style="font-size:16px;">{{ warmup.phase }}</div>
+      </div>
+      <div class="stat">
+        <div class="label">budget ×</div>
+        <div class="value">{{ '%.2f' % warmup.multiplier }}</div>
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <span class="tag {{ 'on' if warmup.allow_posts else '' }}">posts</span>
+      <span class="tag {{ 'on' if warmup.allow_dms else '' }}">dms</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>format mix — feed</h2>
+    {% set colors = ['#c9a961','#e06a5c','#67c267','#e0b250','#9aa8c6','#b273d0'] %}
+    <div class="mix-bar">
+      {% set fmts = formats.items()|list %}
+      {% for fmt, w in fmts %}
+        {% if w > 0 %}
+          <span style="width: {{ w*100 }}%; background: {{ colors[loop.index0 % colors|length] }};"></span>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="mix-legend">
+      {% for fmt, w in fmts %}
+        {% if w > 0 %}
+          <span><i style="background: {{ colors[loop.index0 % colors|length] }};"></i>{{ fmt }} {{ '%.0f%%' % (w*100) }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+
+  <section>
+    <h2>format mix — stories</h2>
+    <div class="mix-bar">
+      {% set smix = stories.items()|list %}
+      {% for fmt, w in smix %}
+        {% if w > 0 %}
+          <span style="width: {{ w*100 }}%; background: {{ colors[loop.index0 % colors|length] }};"></span>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="mix-legend">
+      {% for fmt, w in smix %}
+        {% if w > 0 %}
+          <span><i style="background: {{ colors[loop.index0 % colors|length] }};"></i>{{ fmt }} {{ '%.0f%%' % (w*100) }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+
+  <section>
+    <h2>health</h2>
+    {% if health %}
+      <div class="stat-grid">
+        <div class="stat"><div class="label">followers</div><div class="value">{{ health.followers }}</div></div>
+        <div class="stat"><div class="label">following</div><div class="value">{{ health.following }}</div></div>
+        <div class="stat"><div class="label">media</div><div class="value">{{ health.media_count }}</div></div>
+        <div class="stat {{ 'err' if health.shadowbanned else 'ok' }}">
+          <div class="label">shadowban</div>
+          <div class="value" style="font-size:16px;">{{ 'suspected' if health.shadowbanned else 'clear' }}</div>
+        </div>
+        <div class="stat">
+          <div class="label">engagement</div>
+          <div class="value">{{ '%.2f%%' % ((health.engagement_rate or 0) * 100) }}</div>
+        </div>
+      </div>
+    {% else %}
+      <span class="muted">no health probe yet — runs at 09:00 / 21:00 UTC</span>
+    {% endif %}
+  </section>
+
+  <section style="grid-column: 1 / -1;">
+    <h2>upcoming scheduled</h2>
+    <table>
+      <tr><th></th><th>format</th><th>when (UTC)</th><th>caption</th><th>id</th></tr>
+      {% for u in upcoming %}
+        <tr>
+          <td>{% if u.media_preview %}<img class="thumb" src="{{ u.media_preview }}" alt=""/>{% endif %}</td>
+          <td class="mono">{{ u.format }}</td>
+          <td class="mono">{{ u.scheduled_for }}</td>
+          <td class="caption-cell">{{ u.caption }}</td>
+          <td class="mono muted">#{{ u.id }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="muted">nothing scheduled — generator will backfill on next cycle</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section style="grid-column: 1 / -1;">
+    <h2>recent posts</h2>
+    <table>
+      <tr><th>ig_pk</th><th>format</th><th>posted</th><th>likes</th><th>comments</th><th>reach</th></tr>
+      {% for p in posts %}
+        <tr>
+          <td class="mono">{{ p.ig_media_pk }}</td>
+          <td class="mono">{{ p.format }}</td>
+          <td class="mono">{{ p.posted_at }}</td>
+          <td>{{ p.likes or 0 }}</td>
+          <td>{{ p.comments or 0 }}</td>
+          <td>{{ p.reach or 0 }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="muted">no posts yet</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section>
+    <h2>engagement queue</h2>
+    <div class="stat-grid">
+      <div class="stat"><div class="label">pending</div><div class="value">{{ eng_pending }}</div></div>
+    </div>
+  </section>
+
+  <section style="grid-column: 1 / -1;">
+    <h2>action log (tail)</h2>
+    <table>
+      <tr><th>at (UTC)</th><th>action</th><th>target</th><th>result</th></tr>
+      {% for a in action_tail %}
+        <tr>
+          <td class="mono">{{ a.at }}</td>
+          <td class="mono">{{ a.action }}</td>
+          <td class="mono muted">{{ a.target or '' }}</td>
+          <td class="{{ 'ok' if a.result == 'ok' else ('err' if a.result == 'failed' else 'warn') }}">{{ a.result }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="muted">no activity logged yet</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+
+</main>
+
+<div class="footer">
+  ig-agent · {{ niche }} · refresh manually (no websockets — this is a read-only ops view)
+</div>
+
+</body>
+</html>

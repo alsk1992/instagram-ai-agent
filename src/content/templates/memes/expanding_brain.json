@@ -1,0 +1,20 @@
+{
+  "name": "expanding_brain",
+  "description": "Four-panel escalating realisations. Each line is more 'galaxy-brain' than the last; final panel is the most absurd / advanced niche take.",
+  "background": "expanding_brain.jpg",
+  "rules": "Four short captions. Stage 1 = naive belief. Stage 2 = common upgrade. Stage 3 = expert nuance. Stage 4 = absurd-but-true galaxy-brain take. ≤9 words each.",
+  "text_boxes": [
+    {"name": "stage1", "x": 530, "y": 30,  "width": 510, "height": 230,
+     "uppercase": false, "color": [20,20,22], "stroke_color": [255,255,255],
+     "stroke_width": 2, "align": "left", "font": "Archivo Black"},
+    {"name": "stage2", "x": 530, "y": 290, "width": 510, "height": 230,
+     "uppercase": false, "color": [20,20,22], "stroke_color": [255,255,255],
+     "stroke_width": 2, "align": "left", "font": "Archivo Black"},
+    {"name": "stage3", "x": 530, "y": 550, "width": 510, "height": 230,
+     "uppercase": false, "color": [20,20,22], "stroke_color": [255,255,255],
+     "stroke_width": 2, "align": "left", "font": "Archivo Black"},
+    {"name": "stage4", "x": 530, "y": 810, "width": 510, "height": 240,
+     "uppercase": false, "color": [20,20,22], "stroke_color": [255,255,255],
+     "stroke_width": 2, "align": "left", "font": "Archivo Black"}
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "name": "twobox",
+  "description": "Classic top-text / bottom-text image macro.",
+  "background": "twobox.jpg",
+  "rules": "Top sets the situation; bottom is the punchline. Both ≤8 words.",
+  "text_boxes": [
+    {
+      "name": "top",
+      "x": 40,
+      "y": 30,
+      "width": 1000,
+      "height": 220,
+      "uppercase": true,
+      "color": [255, 255, 255],
+      "stroke_color": [0, 0, 0],
+      "stroke_width": 6,
+      "align": "center",
+      "font": "Archivo Black"
+    },
+    {
+      "name": "bottom",
+      "x": 40,
+      "y": 830,
+      "width": 1000,
+      "height": 220,
+      "uppercase": true,
+      "color": [255, 255, 255],
+      "stroke_color": [0, 0, 0],
+      "stroke_width": 6,
+      "align": "center",
+      "font": "Archivo Black"
+    }
+  ]
+}

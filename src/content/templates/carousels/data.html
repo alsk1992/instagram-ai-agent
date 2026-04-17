@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>slide</title>
+<style>
+$css
+.slide {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  position: relative;
+  gap: 0;
+}
+.meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: '$body_font', sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: $accent;
+}
+.meta .total { color: $fg; opacity: 0.6; }
+.center {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 36px;
+}
+.bignumber {
+  font-family: '$heading_font', sans-serif;
+  font-weight: 900;
+  font-size: 360px;
+  line-height: 0.85;
+  letter-spacing: -10px;
+  color: $accent;
+  margin: 0;
+}
+.title {
+  font-family: '$heading_font', sans-serif;
+  font-weight: 900;
+  font-size: 84px;
+  line-height: 1.0;
+  letter-spacing: -1.5px;
+  color: $fg;
+  max-width: 100%;
+}
+.body {
+  font-family: '$body_font', sans-serif;
+  font-size: 36px;
+  line-height: 1.3;
+  font-weight: 500;
+  color: $fg;
+  opacity: 0.92;
+  max-width: 88%;
+}
+.slide.hook .bignumber { display: none; }
+.slide.hook .title {
+  font-size: 130px;
+  letter-spacing: -3px;
+}
+.slide.hook .body { display: none; }
+.slide.cta .bignumber { display: none; }
+.slide.cta .title {
+  font-size: 100px;
+}
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-family: '$body_font', sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+.footer .watermark { color: $accent; }
+</style>
+</head>
+<body>
+<div class="slide $hook_class $cta_class">
+  <div class="meta">
+    <div>$index</div>
+    <div class="total">/ $total</div>
+  </div>
+  <div class="center">
+    <div class="bignumber">$index</div>
+    <div class="title">$title</div>
+    <div class="body">$body</div>
+  </div>
+  <div class="footer">
+    <div class="watermark">$watermark</div>
+    <div>swipe →</div>
+  </div>
+</div>
+</body>
+</html>

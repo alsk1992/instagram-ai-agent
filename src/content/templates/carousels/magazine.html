@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>slide</title>
+<style>
+$css
+.slide {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding: 0;
+}
+.masthead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 0 16px;
+  border-bottom: 6px solid $accent;
+  font-family: '$body_font', sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+.masthead .left { color: $accent; }
+.masthead .right { color: $fg; opacity: 0.8; }
+.kicker {
+  margin-top: 60px;
+  font-family: '$body_font', sans-serif;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: $accent;
+}
+.title {
+  margin-top: 30px;
+  font-family: '$heading_font', 'Georgia', serif;
+  font-weight: 900;
+  font-size: 110px;
+  line-height: 0.96;
+  letter-spacing: -2px;
+  color: $fg;
+  max-width: 100%;
+}
+.body {
+  margin-top: 60px;
+  font-family: '$body_font', sans-serif;
+  font-size: 38px;
+  font-weight: 500;
+  line-height: 1.32;
+  color: $fg;
+  opacity: 0.92;
+  max-width: 92%;
+  flex: 1;
+}
+.slide.hook .title {
+  font-size: 140px;
+}
+.slide.hook .body { display: none; }
+.slide.cta .title {
+  font-size: 110px;
+}
+.slide.cta .body {
+  font-weight: 700;
+}
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 18px 0;
+  border-top: 4px solid $accent;
+  font-family: '$body_font', sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.footer .watermark { color: $accent; }
+.footer .swipe { color: $fg; opacity: 0.7; }
+</style>
+</head>
+<body>
+<div class="slide $hook_class $cta_class">
+  <div class="masthead">
+    <div class="left">issue $index</div>
+    <div class="right">of $total</div>
+  </div>
+  <div class="kicker">volume $index</div>
+  <div class="title">$title</div>
+  <div class="body">$body</div>
+  <div class="footer">
+    <div class="watermark">$watermark</div>
+    <div class="swipe">swipe →</div>
+  </div>
+</div>
+</body>
+</html>

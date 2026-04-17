@@ -1,0 +1,22 @@
+{
+  "name": "expectation_reality",
+  "description": "Two-panel side-by-side. Left = polished marketed expectation. Right = the lived reality.",
+  "background": "expectation_reality.jpg",
+  "rules": "TOP labels reading 'EXPECTATION' / 'REALITY' are baked into the background. Caption boxes carry the niche-specific punchlines: ≤8 words each.",
+  "text_boxes": [
+    {
+      "name": "expectation",
+      "x": 30, "y": 700, "width": 510, "height": 350,
+      "uppercase": false,
+      "color": [255, 255, 255], "stroke_color": [0, 0, 0],
+      "stroke_width": 5, "align": "center", "font": "Archivo Black"
+    },
+    {
+      "name": "reality",
+      "x": 540, "y": 700, "width": 510, "height": 350,
+      "uppercase": false,
+      "color": [255, 255, 255], "stroke_color": [0, 0, 0],
+      "stroke_width": 5, "align": "center", "font": "Archivo Black"
+    }
+  ]
+}

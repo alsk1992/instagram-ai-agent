@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>quote</title>
+<style>
+$css
+.wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  position: relative;
+}
+.accent-bar {
+  width: 72px;
+  height: 8px;
+  background: $accent;
+  margin-bottom: 48px;
+  border-radius: 4px;
+}
+.quote {
+  font-family: '$heading_font', sans-serif;
+  font-size: 88px;
+  line-height: 1.08;
+  font-weight: 900;
+  letter-spacing: -1.5px;
+  max-width: 100%;
+  text-transform: none;
+  color: $fg;
+}
+.byline {
+  margin-top: 48px;
+  font-family: '$body_font', sans-serif;
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  opacity: 0.75;
+}
+.byline::before {
+  content: "— ";
+}
+.watermark {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  font-family: '$body_font', sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: $accent;
+  opacity: 0.85;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="accent-bar"></div>
+  <div class="quote">$quote</div>
+  <div class="byline">$byline</div>
+  <div class="watermark">$watermark</div>
+</div>
+</body>
+</html>

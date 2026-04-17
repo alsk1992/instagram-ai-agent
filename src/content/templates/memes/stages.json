@@ -1,0 +1,20 @@
+{
+  "name": "stages",
+  "description": "2x2 grid showing stages of a niche journey. Comically escalating commitment / chaos.",
+  "background": "stages.jpg",
+  "rules": "Four stage captions in journey order: novice → trying-too-hard → settled → unhinged. ≤7 words each. The final panel should land the punchline.",
+  "text_boxes": [
+    {"name": "stage1", "x": 30,  "y": 30,  "width": 480, "height": 480,
+     "uppercase": true,  "color": [255,255,255], "stroke_color": [0,0,0],
+     "stroke_width": 5, "align": "center", "font": "Archivo Black"},
+    {"name": "stage2", "x": 570, "y": 30,  "width": 480, "height": 480,
+     "uppercase": true,  "color": [255,255,255], "stroke_color": [0,0,0],
+     "stroke_width": 5, "align": "center", "font": "Archivo Black"},
+    {"name": "stage3", "x": 30,  "y": 570, "width": 480, "height": 480,
+     "uppercase": true,  "color": [255,255,255], "stroke_color": [0,0,0],
+     "stroke_width": 5, "align": "center", "font": "Archivo Black"},
+    {"name": "stage4", "x": 570, "y": 570, "width": 480, "height": 480,
+     "uppercase": true,  "color": [255,255,255], "stroke_color": [0,0,0],
+     "stroke_width": 5, "align": "center", "font": "Archivo Black"}
+  ]
+}

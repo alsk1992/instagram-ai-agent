@@ -1,0 +1,34 @@
+{
+  "name": "drake",
+  "description": "Two-panel 'this not that' format. Top panel = the rejected option, bottom panel = the embraced one.",
+  "background": "drake.jpg",
+  "rules": "TOP rejects a common-but-bad niche behaviour (≤8 words). BOTTOM embraces the better alternative (≤8 words). Mirror the wording rhythm.",
+  "text_boxes": [
+    {
+      "name": "top",
+      "x": 540,
+      "y": 60,
+      "width": 500,
+      "height": 420,
+      "uppercase": false,
+      "color": [20, 20, 22],
+      "stroke_color": [240, 240, 240],
+      "stroke_width": 2,
+      "align": "left",
+      "font": "Archivo Black"
+    },
+    {
+      "name": "bottom",
+      "x": 540,
+      "y": 600,
+      "width": 500,
+      "height": 420,
+      "uppercase": false,
+      "color": [20, 20, 22],
+      "stroke_color": [240, 240, 240],
+      "stroke_width": 2,
+      "align": "left",
+      "font": "Archivo Black"
+    }
+  ]
+}
