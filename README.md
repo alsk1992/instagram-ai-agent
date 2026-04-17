@@ -1,8 +1,28 @@
-# ig-agent
+# instagram-ai-agent
 
-Autonomous, niche-targeted Instagram content pipeline. Single-agent scope, single process, all-free stack by default.
+> **Autonomous AI agent for Instagram.** Generates reels, carousels, memes, quote cards and engages with your audience on autopilot. Single-process, free-tier, commercial-safe.
 
-Inspired by the x-agent topology (brain → watcher → poster), rewired for Instagram: `instagrapi` for the transport, `Pollinations`/`Pexels`/`Pixabay` for media, `OpenRouter`+`Groq`+`Gemini`+`Cerebras` for the LLM layer, `Playwright` for HTML-rendered visuals, `edge-tts` + `WhisperX`/`faster-whisper` + `ffmpeg` for reels.
+`instagram-ai-agent` is a niche-targeted content pipeline for Instagram — the AI does the mining, ideating, generating, captioning, scheduling, posting, replying, and self-health-monitoring. Describe your niche once in `niche.yaml`, give it an Instagram account, and it runs.
+
+Built on a free-tier stack: `instagrapi` transport, `OpenRouter`+`Groq`+`Gemini`+`Cerebras` LLM router, `Pollinations`/`Pexels`/`Pixabay` media, `Playwright` HTML-rendered visuals, `edge-tts`+`WhisperX`+`ffmpeg` for reels, optional `ComfyUI`+`FLUX`+`LoRA`+`ControlNet` for brand-consistent generation.
+
+## 🚀 One-line install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/alsk1992/instagram-ai-agent/main/install.sh | bash
+```
+
+Checks Python 3.11+/ffmpeg, clones the repo, creates `.venv`, installs deps + Playwright chromium + fonts. Then:
+
+```bash
+cd instagram-ai-agent && source .venv/bin/activate
+ig-agent init       # interactive wizard → writes niche.yaml + .env
+ig-agent run        # start the full agent
+```
+
+That's it. First post lands in your queue within ~10 minutes of `ig-agent run`.
+
+**Prefer Make?** `make install && make init && make run`.
 
 ## What it does
 
@@ -26,17 +46,32 @@ All in one `python -m src.orchestrator` process.
 - **Scheduling:** APScheduler inside the async event loop.
 - **Alerts:** Telegram webhook.
 
-## Setup
+## Setup (the long version)
+
+If you'd rather do it manually instead of using the one-liner installer above:
 
 ```bash
-git clone <this-repo> ig-agent && cd ig-agent
+git clone https://github.com/alsk1992/instagram-ai-agent.git
+cd instagram-ai-agent
 ./scripts/bootstrap.sh          # venv, pip install, playwright, fonts, default meme bg
 source .venv/bin/activate
 ig-agent init                   # interactive wizard → writes niche.yaml + .env
 ig-agent login                  # verify IG credentials + persist session
-ig-agent generate --count 3     # make 3 pieces of content
+ig-agent generate --count 3     # make 3 pieces of content (optional preview)
 ig-agent review                 # approve/reject queue items
 ig-agent run                    # start the full orchestrator
+```
+
+Or use the Makefile shortcuts:
+
+```bash
+make install    # runs install.sh
+make init       # the wizard
+make login      # verify IG
+make run        # start orchestrator
+make test       # run the full pytest suite
+make status     # queue depth + health snapshot
+make dashboard  # local read-only web dashboard on :8080
 ```
 
 ### Minimum env you actually need
