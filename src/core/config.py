@@ -49,7 +49,10 @@ class PostFormat(str, Enum):
     STORY_VIDEO = "story_video"
 
 
-FEED_FORMATS = frozenset({"meme", "quote_card", "carousel", "reel_stock", "reel_ai", "photo", "human_photo"})
+FEED_FORMATS = frozenset({
+    "meme", "quote_card", "carousel", "reel_stock", "reel_ai",
+    "photo", "human_photo", "story_carousel",
+})
 STORY_FORMATS = frozenset(
     {"story_quote", "story_announcement", "story_photo", "story_video", "story_human"}
 )

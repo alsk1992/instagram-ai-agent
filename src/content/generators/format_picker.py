@@ -1,11 +1,50 @@
 """Pick the next format to generate — feed vs story, then variant-within-pool."""
 from __future__ import annotations
 
+import os
 import random
 from collections import Counter
 
 from src.core import db
 from src.core.config import FEED_FORMATS, STORY_FORMATS, NicheConfig
+from src.core.logging_setup import get_logger
+
+log = get_logger(__name__)
+
+# Formats with hard external-API requirements. When the API keys aren't
+# present, the format would consume a generation slot just to fail — so
+# we zero its weight before the picker runs.
+_FORMAT_REQUIRES_ENV: dict[str, tuple[str, ...]] = {
+    # reel_stock needs Pexels OR Pixabay to fetch footage. Either key
+    # alone is sufficient; we only skip when BOTH are missing.
+    "reel_stock": ("PEXELS_API_KEY", "PIXABAY_API_KEY"),
+}
+
+
+def _format_is_runnable(format_name: str) -> bool:
+    """Cheap env-based readiness check. Returns True when the format
+    either has no API requirements OR at least one required key is set."""
+    required = _FORMAT_REQUIRES_ENV.get(format_name)
+    if not required:
+        return True
+    return any(os.environ.get(k) for k in required)
+
+
+def _prune_unrunnable(weights: dict[str, float]) -> dict[str, float]:
+    """Strip formats that can't run under the current env. If that
+    empties the pool, return the original weights — caller will fall
+    back deterministically."""
+    pruned = {f: w for f, w in weights.items() if _format_is_runnable(f)}
+    if not pruned and weights:
+        log.warning(
+            "format_picker: all formats blocked by missing env vars — "
+            "generation will likely fail. Check PEXELS_API_KEY / PIXABAY_API_KEY."
+        )
+        return weights
+    dropped = [f for f in weights if f not in pruned and weights[f] > 0]
+    if dropped:
+        log.info("format_picker: skipping unrunnable formats %s (missing env)", dropped)
+    return pruned
 
 
 def pick_next(cfg: NicheConfig, *, kind: str | None = None) -> str:
@@ -36,6 +75,9 @@ def pick_next(cfg: NicheConfig, *, kind: str | None = None) -> str:
         for f in target
         if target[f] > 0
     }
+    # Remove formats whose required API keys aren't set so we don't
+    # burn a full generation cycle on a guaranteed failure.
+    effective = _prune_unrunnable(effective)
     if not effective:
         # User disabled every format in this pool — fall back deterministically
         return "meme" if kind == "feed" else "story_quote"

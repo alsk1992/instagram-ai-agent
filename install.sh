@@ -33,17 +33,17 @@ die()  { printf "${RED}✗${RESET}  %s\n" "$*" >&2; exit 1; }
 say "Checking prerequisites"
 
 PYTHON_BIN=""
-for candidate in python3.12 python3.11 python3; do
+for candidate in python3.13 python3.12 python3.11 python3; do
   if command -v "$candidate" >/dev/null 2>&1; then
-    ver="$("$candidate" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "")"
-    if [[ "$ver" == "3.11" || "$ver" == "3.12" ]]; then
+    ver="$("$candidate" -c 'import sys; v=sys.version_info; print(f"{v.major}.{v.minor}"); sys.exit(0 if (v.major, v.minor) >= (3, 11) else 1)' 2>/dev/null || echo "")"
+    if [[ "$ver" =~ ^3\.(1[1-9]|[2-9][0-9])$ ]]; then
       PYTHON_BIN="$candidate"
       break
     fi
   fi
 done
 if [[ -z "$PYTHON_BIN" ]]; then
-  die "Python 3.11 or 3.12 required.
+  die "Python 3.11+ required.
       Install:
         macOS:  brew install python@3.12
         Ubuntu: sudo apt install python3.12 python3.12-venv
@@ -97,26 +97,30 @@ python -m pip install --quiet -e .
 ok "Package installed"
 
 # ─── Playwright chromium ────────────────────────────────────
-say "Installing Playwright chromium (first run only)"
-python -m playwright install chromium >/dev/null 2>&1 || warn "Playwright chromium install had warnings"
+say "Installing Playwright chromium (~200 MB download, 2–5 min on first run)"
+python -m playwright install chromium || warn "Playwright chromium install had warnings"
 python -m playwright install-deps chromium >/dev/null 2>&1 || true
 ok "Playwright ready"
 
-# ─── Default assets (fonts + sample meme templates) ─────────
-say "Fetching commercial-safe default assets"
-if [[ -f "scripts/gen_default_assets.py" ]]; then
-  python scripts/gen_default_assets.py >/dev/null 2>&1 || warn "Default asset generation had warnings"
-fi
+# ─── Fonts FIRST so default-asset generation can use them ───
+say "Fetching commercial-safe fonts (SIL-OFL)"
 mkdir -p data/fonts
 if [[ ! -f "data/fonts/Archivo Black.ttf" ]]; then
   curl -fsSL -o "data/fonts/Archivo Black.ttf" \
     https://github.com/google/fonts/raw/main/ofl/archivoblack/ArchivoBlack-Regular.ttf \
-    2>/dev/null || warn "Archivo Black font fetch failed (non-fatal)"
+    2>/dev/null || warn "Archivo Black font fetch failed (non-fatal — DejaVu will be used)"
 fi
 if [[ ! -f "data/fonts/Inter.ttf" ]]; then
   curl -fsSL -o "data/fonts/Inter.ttf" \
     "https://github.com/google/fonts/raw/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf" \
-    2>/dev/null || warn "Inter font fetch failed (non-fatal)"
+    2>/dev/null || warn "Inter font fetch failed (non-fatal — DejaVu will be used)"
+fi
+ok "Fonts ready"
+
+# ─── Default meme backgrounds (uses the fonts we just downloaded) ───
+say "Regenerating default meme backgrounds"
+if [[ -f "scripts/gen_default_assets.py" ]]; then
+  python scripts/gen_default_assets.py >/dev/null 2>&1 || warn "Default asset generation had warnings"
 fi
 ok "Assets ready"
 

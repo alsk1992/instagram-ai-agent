@@ -90,8 +90,22 @@ def totp_code(secret: str | None = None) -> str | None:
     return pyotp.TOTP(normalized).now()
 
 
-def make_challenge_code_handler():
-    """Return a callable compatible with instagrapi's challenge_code_handler."""
+class ChallengeNeedsManualCode(Exception):
+    """Raised when IG wants a verification code but IMAP isn't configured
+    (or the code hasn't arrived). Distinct from ``ChallengeRequired`` so
+    ``IGClient.login`` can show an interactive prompt instead of locking
+    the whole account into a 24h cooldown."""
+
+
+def make_challenge_code_handler(interactive: bool = False):
+    """Return a callable compatible with instagrapi's challenge_code_handler.
+
+    When ``interactive=True`` (e.g. from the ``ig-agent login`` CLI), the
+    handler will prompt the user for the code on stdin if IMAP can't find
+    one. When False (e.g. from the scheduled orchestrator), it raises
+    ``ChallengeNeedsManualCode`` so the caller can decide whether to
+    pause or cooldown.
+    """
 
     def handler(username: str, choice: Any) -> str:
         cid = db.challenge_log("code_required", {"username": username, "choice": str(choice)})
@@ -101,12 +115,37 @@ def make_challenge_code_handler():
         if code:
             db.challenge_resolve(cid, "imap")
             return code
-        raise RuntimeError(
-            f"Challenge for {username!r} needs manual code entry "
-            "(IMAP not configured or email not received)."
+
+        if interactive:
+            # Interactive TTY path — ask the human. Only used by `ig-agent login`.
+            try:
+                import getpass
+                msg = (
+                    f"\nIG sent a verification code to the email/SMS for {username}.\n"
+                    "Paste it here to complete login: "
+                )
+                code = (getpass.getpass(msg) if not _is_tty() else input(msg)).strip()
+            except (EOFError, KeyboardInterrupt):
+                code = ""
+            if code:
+                db.challenge_resolve(cid, "manual")
+                return code
+
+        raise ChallengeNeedsManualCode(
+            f"Challenge for {username!r} needs manual code entry. "
+            "Either set IMAP_HOST/IMAP_USER/IMAP_PASS in .env so the agent "
+            "can read the code from your inbox, or run `ig-agent login` "
+            "interactively to paste the code yourself."
         )
 
     return handler
+
+
+def _is_tty() -> bool:
+    """True when stdin is a real terminal — use regular input() so the
+    user sees the digits they type."""
+    import sys
+    return sys.stdin.isatty()
 
 
 def make_totp_handler():

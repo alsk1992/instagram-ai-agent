@@ -35,6 +35,22 @@ class BackoffActive(RuntimeError):
     """Raised when the agent is in a cooldown and must not make requests."""
 
 
+def _build_cookie_seed() -> dict[str, str] | None:
+    """Collect the cookie quad from env. Returns None if any required
+    cookie is missing so callers can fall through to password login."""
+    required = {
+        "sessionid":  os.environ.get("IG_SESSIONID", "").strip(),
+        "ds_user_id": os.environ.get("IG_DS_USER_ID", "").strip(),
+        "csrftoken":  os.environ.get("IG_CSRFTOKEN", "").strip(),
+        "mid":        os.environ.get("IG_MID", "").strip(),
+    }
+    # sessionid alone is enough for instagrapi's login_by_sessionid;
+    # ds_user_id / csrftoken / mid are bonuses that improve continuity.
+    if not required["sessionid"]:
+        return None
+    return required
+
+
 class IGClient:
     def __init__(self, username: str | None = None, password: str | None = None):
         self.username = username or os.environ.get("IG_USERNAME", "")
@@ -51,8 +67,41 @@ class IGClient:
         # Persistent device fingerprint
         dev.apply_to(self.cl)
 
-        # Wire challenge handlers
-        self.cl.challenge_code_handler = ch.make_challenge_code_handler()
+        # Geographic coherence — timezone / locale / country must match
+        # the account's history, otherwise IG flags the session as
+        # suspicious and triggers an email challenge. We let the user
+        # override via env; defaults are instagrapi's own sensible values.
+        _country = os.environ.get("IG_COUNTRY_CODE", "").strip()
+        _tz_offset = os.environ.get("IG_TIMEZONE_OFFSET", "").strip()
+        _locale = os.environ.get("IG_LOCALE", "").strip()
+        if _country:
+            self.cl.set_country(_country)
+        if _tz_offset:
+            try:
+                self.cl.set_timezone_offset(int(_tz_offset))
+            except ValueError:
+                log.warning("IG_TIMEZONE_OFFSET=%r isn't an integer (seconds)", _tz_offset)
+        if _locale:
+            self.cl.set_locale(_locale)
+
+        # User-agent override — rare, but some users run behind CDN
+        # rewriters or need to spoof a specific build.
+        _ua = os.environ.get("IG_USER_AGENT", "").strip()
+        if _ua:
+            self.cl.set_user_agent(_ua)
+
+        # Direct-cookie escape hatch: paste a pre-logged-in session
+        # from a browser to skip the first-login challenge entirely.
+        # Triggered when all four cookies are provided AND no session
+        # file exists yet (so we don't clobber a working session).
+        self._cookie_seed = _build_cookie_seed()
+
+        # Wire challenge handlers. When stdin is a TTY (user ran
+        # `ig-agent login` directly) we enable interactive code entry
+        # so a first-time setup doesn't dead-end in a 24h cooldown.
+        import sys as _sys
+        _interactive = _sys.stdin.isatty() and _sys.stdout.isatty()
+        self.cl.challenge_code_handler = ch.make_challenge_code_handler(interactive=_interactive)
         self.cl.totp_code_handler = ch.make_totp_handler()
 
         # Random but human-ish request delays
@@ -66,12 +115,43 @@ class IGClient:
 
         self.session_path.parent.mkdir(parents=True, exist_ok=True)
         settings_loaded = False
-        if self.session_path.exists():
+
+        # If the user pointed us at an existing instagrapi session JSON
+        # (exported from another tool, or transplanted from a different
+        # machine) load that directly. Bypasses the fresh-login challenge
+        # loop entirely.
+        external_session = os.environ.get("IG_SESSION_FILE", "").strip()
+        if external_session and Path(external_session).exists() and not self.session_path.exists():
+            try:
+                self.cl.load_settings(external_session)
+                self.cl.dump_settings(str(self.session_path))  # copy into our canonical slot
+                settings_loaded = True
+                log.info("Loaded external session from %s → %s", external_session, self.session_path)
+            except Exception as e:
+                log.warning("IG_SESSION_FILE load failed: %s — continuing with normal login", e)
+
+        if not settings_loaded and self.session_path.exists():
             try:
                 self.cl.load_settings(str(self.session_path))
                 settings_loaded = True
             except Exception as e:
                 log.warning("Failed to load session, will re-login: %s", e)
+
+        # Direct cookie-seed path: if the user pasted IG_SESSIONID +
+        # IG_DS_USER_ID + IG_CSRFTOKEN + IG_MID into .env, seed
+        # instagrapi's cookie jar BEFORE login so the username/password
+        # call rides an already-authenticated session.
+        if not settings_loaded and self._cookie_seed:
+            try:
+                self.cl.login_by_sessionid(self._cookie_seed["sessionid"])
+                self._logged_in = True
+                self.cl.dump_settings(str(self.session_path))
+                log.info("Logged in via IG_SESSIONID for %s", self.username)
+                from src.core.warmup import ensure_started
+                ensure_started()
+                return
+            except Exception as e:
+                log.warning("IG_SESSIONID login failed: %s — falling back to password login", e)
 
         try:
             self.cl.login(self.username, self._password)
@@ -102,10 +182,21 @@ class IGClient:
             self.cl.login(self.username, self._password, verification_code=code)
             self.cl.dump_settings(str(self.session_path))
             self._logged_in = True
-        except ChallengeRequired:
+        except ChallengeRequired as e:
             # instagrapi attempts to call challenge_code_handler internally; if
-            # we land here the handler already raised. Escalate so the
-            # orchestrator enters cooldown.
+            # we land here the handler already raised. Distinguish between:
+            #   (a) needs-manual-code — user just hasn't entered it yet, so
+            #       DON'T enter cooldown. Re-raise with a clear message so
+            #       they can re-run `ig-agent login` and paste the code.
+            #   (b) genuine challenge refusal (IG says no) — cooldown 24h.
+            inner = getattr(e, "__cause__", None) or getattr(e, "__context__", None)
+            if isinstance(inner, ch.ChallengeNeedsManualCode):
+                log.error(
+                    "IG sent a code but we couldn't read it. Either set "
+                    "IMAP_HOST/IMAP_USER/IMAP_PASS in .env, OR run `ig-agent "
+                    "login` directly in a terminal to paste the code by hand."
+                )
+                raise inner from e
             _enter_cooldown("challenge_required", hours=24)
             raise
         except BadPassword:

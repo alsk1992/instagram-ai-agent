@@ -314,12 +314,45 @@ def init(
     env_updates["TELEGRAM_CHAT_ID"] = (
         questionary.text("TELEGRAM_CHAT_ID (optional):").ask() or ""
     )
+
+    console.print(
+        "\n[dim]IG email-code challenges: without these the agent falls back to "
+        "manual code entry. Recommended for long-running accounts so the orchestrator "
+        "can auto-resolve.[/dim]"
+    )
+    env_updates["IMAP_HOST"] = (
+        questionary.text("IMAP_HOST (e.g. imap.gmail.com, optional):").ask() or ""
+    )
+    env_updates["IMAP_USER"] = (
+        questionary.text("IMAP_USER (email, optional):").ask() or ""
+    )
+    env_updates["IMAP_PASS"] = (
+        questionary.password("IMAP_PASS (app password, optional):").ask() or ""
+    )
+
     _write_env(env_updates)
     console.print(f"[green]Wrote[/green] {ENV_PATH}")
 
     db.init_db()
     console.print(f"[green]Initialised[/green] brain.db")
-    console.print("\nNext: [bold]ig-agent login[/bold] to verify Instagram auth, then [bold]ig-agent run[/bold].")
+
+    # Auto-seed the idea bank — every generation cycle picks an archetype,
+    # so a fresh install with zero ideas strips a quality layer. The seed
+    # corpus ships in data/ideas/seed.json (CC0, 90 archetypes).
+    try:
+        from src.brain import idea_bank
+        n_seeded = idea_bank.seed_from_file()
+        if n_seeded > 0:
+            console.print(f"[green]Seeded[/green] idea bank with {n_seeded} archetypes")
+    except Exception as e:
+        console.print(f"[yellow]Warning:[/yellow] idea-bank seeding skipped: {e}")
+
+    console.print("\n[bold]Next steps:[/bold]")
+    console.print("  1. [bold]ig-agent login[/bold]                 # verify Instagram auth")
+    console.print("  2. [bold]ig-agent generate -n 3[/bold]         # make 3 posts")
+    console.print("  3. [bold]ig-agent review[/bold]                # approve them")
+    console.print("  4. [bold]ig-agent drain[/bold]                 # post NOW")
+    console.print("  5. [bold]ig-agent run[/bold]                   # start the full agent")
 
 
 def _is_int_in(lo: int, hi: int):

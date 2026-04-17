@@ -16,13 +16,18 @@ Checks Python 3.11+/ffmpeg, clones the repo, creates `.venv`, installs deps + Pl
 
 ```bash
 cd instagram-ai-agent && source .venv/bin/activate
-ig-agent init       # interactive wizard → writes niche.yaml + .env
-ig-agent run        # start the full agent
+
+ig-agent init              # 1. wizard → niche.yaml + .env
+ig-agent login             # 2. verify IG credentials (handles email-code challenges)
+ig-agent generate -n 3     # 3. generate 3 posts into the queue
+ig-agent review            # 4. walk + approve them
+ig-agent drain             # 5. post the approved batch NOW (skips best-hours queue)
+ig-agent run               # 6. start the full agent — schedules into best_hours_utc
 ```
 
-That's it. First post lands in your queue within ~10 minutes of `ig-agent run`.
+Steps 3–5 prove the pipeline end-to-end with your first real post. After that, `ig-agent run` is the thing you leave running long-term — it generates on a 50-min loop and posts at your `best_hours_utc` windows.
 
-**Prefer Make?** `make install && make init && make run`.
+**Prefer Make?** `make install && make init && make login && make generate N=3 && make review && make run`.
 
 ## What it does
 

@@ -32,14 +32,10 @@ dependencies = [
     "pillow>=11.0",
     "imagehash>=4.3",
     "numpy>=2.0",
-    "moviepy>=2.1",
     "playwright>=1.48",
     "edge-tts>=7.0",
     "faster-whisper>=1.1",
 
-    # Scraping + stock
-    "requests>=2.32",
-    "beautifulsoup4>=4.12",
 
     # Challenge resolver
     "pyotp>=2.9",
