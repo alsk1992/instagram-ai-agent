@@ -166,6 +166,15 @@ def main() -> int:
         MEDIA.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(work / "walkthrough.mp4", OUT)
         print(f"✓ Written: {OUT.relative_to(ROOT)}  ({OUT.stat().st_size / 1024 / 1024:.1f} MB)")
+
+        # Additional artefacts for the README — GIF plays inline on GitHub
+        # where <video> doesn't, poster is the fallback thumbnail.
+        gif_path = MEDIA / "walkthrough.gif"
+        poster_path = MEDIA / "walkthrough-poster.jpg"
+        print("▶ Generating GIF preview + poster thumbnail")
+        _derive_gif_and_poster(OUT, gif_path, poster_path, work)
+        print(f"  → {gif_path.relative_to(ROOT)}  ({gif_path.stat().st_size / 1024 / 1024:.1f} MB)")
+        print(f"  → {poster_path.relative_to(ROOT)}  ({poster_path.stat().st_size / 1024:.0f} KB)")
         return 0
     finally:
         if not args.keep_work:
@@ -421,6 +430,41 @@ def _compose_video(
          "-f", "concat", "-safe", "0", "-i", str(concat_list),
          "-c", "copy",
          str(work / "walkthrough.mp4")],
+        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+    )
+
+
+def _derive_gif_and_poster(
+    mp4: Path, gif: Path, poster: Path, work: Path,
+) -> None:
+    """Produce two extras from the final mp4:
+      * walkthrough.gif  (720-wide, 10fps, palette-dithered) — plays
+        inline on GitHub README where <video> elements don't.
+      * walkthrough-poster.jpg — single-frame thumbnail for the
+        <video> tag's poster attribute.
+    """
+    # Poster — frame at t=1s (title card, already settled)
+    subprocess.run(
+        [FFMPEG, "-y", "-ss", "1.0", "-i", str(mp4),
+         "-frames:v", "1", "-q:v", "2",
+         "-vf", "scale=1280:-1", str(poster)],
+        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+    )
+
+    # GIF — two-pass palette for sharp text. 720w keeps it <2MB for
+    # an 80s video while still readable on desktop.
+    palette = work / "palette.png"
+    subprocess.run(
+        [FFMPEG, "-y", "-i", str(mp4),
+         "-vf", "fps=10,scale=720:-1:flags=lanczos,palettegen=max_colors=128",
+         str(palette)],
+        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+    )
+    subprocess.run(
+        [FFMPEG, "-y", "-i", str(mp4), "-i", str(palette),
+         "-filter_complex",
+         "fps=10,scale=720:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=4",
+         str(gif)],
         check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
     )
 
