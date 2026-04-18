@@ -123,16 +123,16 @@ def main() -> int:
     parser.add_argument(
         "--backend",
         choices=["edge-tts", "piper", "kokoro"],
-        default="edge-tts",
-        help="TTS backend (default: edge-tts; already a dep)",
+        default="kokoro",
+        help="TTS backend (default: kokoro — Apache-2.0, 2025 SOTA OSS voice)",
     )
     parser.add_argument(
         "--voice",
-        default="en-US-GuyNeural",
-        help="Voice ID — backend-specific. edge-tts: en-US-GuyNeural | "
-        "en-US-AriaNeural | en-GB-RyanNeural. "
-        "piper: en_US-ryan-medium | en_GB-alan-medium. "
-        "kokoro: af_bella | am_michael.",
+        default="af_bella",
+        help="Voice ID — backend-specific. "
+        "kokoro (default): af_bella | af_sarah | am_michael | am_adam | bf_emma | bm_george. "
+        "edge-tts: en-US-GuyNeural | en-US-AriaNeural | en-GB-RyanNeural. "
+        "piper: en_US-ryan-medium | en_GB-alan-medium.",
     )
     parser.add_argument("--keep-work", action="store_true",
                         help="Don't delete the intermediate workdir.")
@@ -328,16 +328,31 @@ def _piper_tts(text: str, dest: Path, *, voice: str) -> None:
     )
 
 
+_KOKORO_PIPELINE = None
+
+
 def _kokoro_tts(text: str, dest: Path, *, voice: str) -> None:
-    """Kokoro 2025 — 82M-param flagship OSS TTS, Apache-2.0."""
+    """Kokoro 2025 — 82M-param flagship OSS TTS, Apache-2.0.
+
+    Forces CPU by default because many CUDA/cuDNN combos are finicky
+    and Kokoro is fast enough on CPU for this script's 8 panels.
+    Override via ``IG_KOKORO_DEVICE=cuda`` if you know your stack works.
+    """
     try:
+        import torch
         from kokoro import KPipeline
     except ImportError:
         raise RuntimeError("kokoro not installed. `pip install kokoro soundfile`")
     import soundfile as sf
-    pipeline = KPipeline(lang_code="a")   # auto
+    global _KOKORO_PIPELINE
+    if _KOKORO_PIPELINE is None:
+        device = os.environ.get("IG_KOKORO_DEVICE", "cpu").strip() or "cpu"
+        _KOKORO_PIPELINE = KPipeline(
+            lang_code="a",
+            device=torch.device(device),
+        )
     audio_chunks = []
-    for _, _, audio in pipeline(text, voice=voice):
+    for _, _, audio in _KOKORO_PIPELINE(text, voice=voice):
         audio_chunks.append(audio)
     import numpy as np
     combined = np.concatenate(audio_chunks) if len(audio_chunks) > 1 else audio_chunks[0]
