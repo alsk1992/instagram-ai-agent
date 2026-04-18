@@ -61,7 +61,21 @@ def _build_cookie_seed() -> dict[str, str] | None:
         "shbid":      os.environ.get("IG_SHBID", "").strip(),
         "shbts":      os.environ.get("IG_SHBTS", "").strip(),
         "ig_nrcb":    os.environ.get("IG_NRCB", "").strip(),
+        # Supplementary — not required but boost session-fingerprint
+        # continuity for first-boot-on-fresh-VPS scenarios.
+        "wd":         os.environ.get("IG_WD", "").strip(),
+        "dpr":        os.environ.get("IG_DPR", "").strip(),
+        "ig_lang":    os.environ.get("IG_IG_LANG", "").strip(),
+        "ps_l":       os.environ.get("IG_PS_L", "").strip(),
+        "ps_n":       os.environ.get("IG_PS_N", "").strip(),
+        "mcd":        os.environ.get("IG_MCD", "").strip(),
+        "ccode":      os.environ.get("IG_CCODE", "").strip(),
     }
+    # fbm_<appid> is dynamic — read IG_FBM_APPID and store under the
+    # canonical FB app-id so the cookie name matches what IG expects.
+    fbm = os.environ.get("IG_FBM_APPID", "").strip()
+    if fbm:
+        cookies["fbm_124024574287414"] = fbm
     if not cookies["sessionid"]:
         return None
     # Strip empties so we can detect "full set" via key presence.
@@ -86,16 +100,91 @@ def _default_user_agent(device: dict) -> str:
 
 
 def _session_refresh_days() -> int:
-    """Days after which we force a fresh password login. Default 7 per
-    2026 community consensus — cookies survive longer but server-side
-    session TTL decays and triggers silent rate-limit cascades."""
+    """Days after which we force a fresh password login.
+
+    **Default 0 (disabled)** — based on 2026 research (instagrapi best-
+    practices + community reports). Every ``relogin()`` is a high-value
+    suspicion event for IG's risk models. The correct pattern is:
+
+      * ``load_settings()`` forever
+      * ``relogin()`` ONLY when a call raises ``LoginRequired``
+      * cap relogin attempts at 1 — instagrapi's own ``handle_exception``
+        freezes the account 7d after a second ``BadPassword``
+
+    Set to a positive int only if you KNOW your account is dying every
+    N days from silent server-side TTL (rare in 2026).
+    """
     raw = os.environ.get("IG_SESSION_REFRESH_DAYS", "").strip()
     if not raw:
-        return 7
+        return 0
     try:
         return max(0, int(raw))
     except ValueError:
-        return 7
+        return 0
+
+
+# ─── TLS impersonation ──────────────────────────────────────────
+def _tls_impersonation_profile() -> str | None:
+    """Return the curl_cffi profile to impersonate, or None to stay on
+    plain requests.Session.
+
+    Profile selection:
+      * ``IG_TLS_IMPERSONATE`` env wins if set (e.g. "chrome131_android",
+        "safari18_ios", "chrome146").
+      * Default is ``chrome131_android`` — the closest OSS profile to
+        the real Instagram Android app's OkHttp/BoringSSL handshake.
+        Mismatched profile (desktop Chrome TLS + IG mobile UA) is the
+        exact signal Meta flags.
+
+    Returns None when ``IG_TLS_IMPERSONATE=off`` or curl_cffi isn't
+    importable — the caller then leaves the sessions unpatched.
+    """
+    val = os.environ.get("IG_TLS_IMPERSONATE", "").strip().lower()
+    if val in ("off", "0", "false", "no"):
+        return None
+    try:
+        import curl_cffi  # noqa: F401
+    except Exception:
+        return None
+    return val or "chrome131_android"
+
+
+def _apply_tls_impersonation(cl: Any) -> bool:
+    """Swap instagrapi's two requests.Session objects for curl_cffi
+    Session instances with a browser-impersonating TLS/HTTP-2 profile.
+    Preserves cookies + headers via the standard Session interface.
+    Returns True when the swap succeeded."""
+    profile = _tls_impersonation_profile()
+    if profile is None:
+        return False
+    try:
+        from curl_cffi import requests as cffi
+    except Exception as e:
+        log.debug("curl_cffi import failed, staying on plain requests: %s", e)
+        return False
+
+    try:
+        # Preserve whatever instagrapi configured on the default sessions.
+        for attr in ("private", "public"):
+            old = getattr(cl, attr, None)
+            if old is None:
+                continue
+            new = cffi.Session(impersonate=profile)
+            # Carry over cookies + headers instagrapi may have set.
+            try:
+                new.cookies.update(old.cookies.get_dict() if hasattr(old.cookies, "get_dict") else dict(old.cookies))
+            except Exception:
+                pass
+            try:
+                new.headers.update(dict(old.headers))
+            except Exception:
+                pass
+            setattr(cl, attr, new)
+        log.info("TLS impersonation active: profile=%s", profile)
+        return True
+    except Exception as e:
+        log.warning("TLS impersonation swap failed: %s — continuing on plain requests", e)
+        return False
 
 
 def _has_full_cookie_set(seed: dict[str, str]) -> bool:
@@ -119,6 +208,12 @@ class IGClient:
         proxy = os.environ.get("IG_PROXY")
         if proxy:
             self.cl.set_proxy(proxy)
+
+        # TLS / HTTP-2 browser impersonation — swap instagrapi's plain
+        # requests.Session for a curl_cffi Session that speaks Chrome-
+        # on-Android's handshake. Zero-cost when curl_cffi isn't
+        # installed; see _apply_tls_impersonation for profile details.
+        self._tls_active = _apply_tls_impersonation(self.cl)
 
         # Persistent device fingerprint
         dev.apply_to(self.cl)
@@ -662,6 +757,100 @@ class IGClient:
         if not self._logged_in:
             self.login()
 
+    # ───── Liveness / keep-alive ──────────────────────────────────
+    def keep_alive(self) -> bool:
+        """Lightweight probe that keeps server-side session state warm
+        + surfaces ``LoginRequired`` early (before a real write fails).
+
+        Calls ``get_timeline_feed`` — instagrapi's own canonical
+        liveness probe per the best-practices docs. Returns True when
+        the session is healthy, False when dead/throttled. Logs every
+        probe to ``session_health`` so the dashboard + alerting layer
+        can track drift over time."""
+        import time as _time
+        start = _time.monotonic()
+        try:
+            self._ensure_backoff_ok()
+            self._ensure_logged_in()
+        except BackoffActive:
+            db.get_conn().execute(
+                "INSERT INTO session_health (status, note) VALUES (?, ?)",
+                ("throttled", "backoff active"),
+            )
+            return False
+        except Exception as e:
+            log.warning("keep_alive: login gate failed: %s", e)
+            db.get_conn().execute(
+                "INSERT INTO session_health (status, note) VALUES (?, ?)",
+                ("error", f"login_gate:{type(e).__name__}"),
+            )
+            return False
+
+        try:
+            feed = self._retry(lambda: self.cl.get_timeline_feed(), attempts=1)
+            n = 0
+            try:
+                n = len(feed) if isinstance(feed, list) else len(feed.get("feed_items", []) or [])
+            except Exception:
+                n = 0
+            latency = int((_time.monotonic() - start) * 1000)
+            db.get_conn().execute(
+                "INSERT INTO session_health (status, feed_items, latency_ms) VALUES (?, ?, ?)",
+                ("alive", n, latency),
+            )
+            # Persist session so any rotated cookies from this probe
+            # (mid, rur, x-ig-www-claim) are on disk.
+            self.persist_settings()
+            return True
+        except LoginRequired:
+            log.warning("keep_alive: LoginRequired — session dead")
+            self._logged_in = False
+            db.get_conn().execute(
+                "INSERT INTO session_health (status, note) VALUES (?, ?)",
+                ("dead", "LoginRequired"),
+            )
+            try:
+                self.session_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return False
+        except ChallengeRequired as e:
+            log.warning("keep_alive: ChallengeRequired — needs manual resolution")
+            db.get_conn().execute(
+                "INSERT INTO session_health (status, note) VALUES (?, ?)",
+                ("challenge", str(e)[:200]),
+            )
+            return False
+        except Exception as e:
+            db.get_conn().execute(
+                "INSERT INTO session_health (status, note) VALUES (?, ?)",
+                ("error", f"{type(e).__name__}:{str(e)[:100]}"),
+            )
+            log.debug("keep_alive: non-fatal probe error: %s", e)
+            return False
+
+    def persist_settings(self) -> None:
+        """Atomically flush the session to disk — call after every
+        successful write action so cookie rotations aren't lost on
+        crash. instagrapi's internal cookie jar merges Set-Cookie on
+        every response; we must dump to keep the persistent file
+        in sync."""
+        try:
+            # Atomic-ish: write to sibling temp, then os.replace.
+            import tempfile as _tmp
+            parent = self.session_path.parent
+            parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = _tmp.mkstemp(
+                prefix=f".{self.session_path.name}.",
+                suffix=".part",
+                dir=str(parent),
+            )
+            os.close(fd)
+            self.cl.dump_settings(tmp)
+            os.replace(tmp, self.session_path)
+        except Exception as e:
+            log.debug("persist_settings failed (non-fatal): %s", e)
+
     def _should_rotate_client(self) -> bool:
         import time as _time
         from src.plugins import human_mimic as _hm
@@ -678,6 +867,9 @@ class IGClient:
         import time as _time
         try:
             new_cl = Client()
+            # Re-apply TLS impersonation BEFORE loading settings so the
+            # cookie jar lands on the right Session type.
+            _apply_tls_impersonation(new_cl)
             dev.apply_to(new_cl)
             if os.environ.get("IG_PROXY"):
                 new_cl.set_proxy(os.environ["IG_PROXY"])

@@ -148,6 +148,14 @@ async def post_next(cfg: NicheConfig, ig: IGClient | None = None) -> int | None:
     db.post_record(media_pk, cid, item["format"], item["caption"])
     db.action_log("post", media_pk, "ok", 0)
 
+    # Persist the session AFTER the write — IG rotates cookies
+    # (mid / rur / x-ig-www-claim / occasionally csrftoken) on write
+    # responses. Losing them on crash = silent session drift.
+    try:
+        cl.persist_settings()
+    except Exception:
+        pass
+
     # Archive to R2 (no-op if unconfigured), then clean up local stage
     if storage.configured():
         try:

@@ -202,6 +202,16 @@ class Orchestrator:
         except Exception as e:
             log.exception("job_reddit failed")
 
+    async def job_keepalive(self) -> None:
+        """Light session probe — get_timeline_feed every ~45 min during
+        awake hours. Keeps the cookie jar synced with server-side
+        rotations and surfaces LoginRequired before a real write fails.
+        Per 2026 instagrapi best practices."""
+        try:
+            await asyncio.to_thread(self.ig.keep_alive)
+        except Exception as e:
+            log.debug("job_keepalive non-fatal: %s", e)
+
     async def job_repurpose(self) -> None:
         try:
             await carousel_repurpose.run_once(self.cfg)
@@ -359,6 +369,16 @@ class Orchestrator:
                 max_instances=1,
                 coalesce=True,
             )
+        # Session keep-alive — lightweight probe every ~45 min so
+        # the cookie jar stays synced + LoginRequired surfaces BEFORE
+        # a real write fails. Jittered to avoid scripted cadence.
+        self.scheduler.add_job(
+            self.job_keepalive,
+            IntervalTrigger(minutes=45, jitter=600),
+            id="keepalive",
+            max_instances=1,
+            coalesce=True,
+        )
         # Reel → carousel repurpose — runs once a day, only picks up
         # reels older than cfg.reel_repurpose.min_reel_age_days so a reel
         # has time to breathe first. Cheap no-op when no candidate exists.

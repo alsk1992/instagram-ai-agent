@@ -117,6 +117,17 @@ stable-audio = [
     "torch>=2.0",
     "torchaudio>=2.0",
 ]
+# TLS / HTTP-2 browser impersonation for IG's private API. instagrapi
+# ships plain requests.Session; Meta's server-side JA3/JA4 + Akamai-h2
+# classifier flags this as bot traffic. curl_cffi wraps lexiforest's
+# patched BoringSSL to impersonate Chrome/Safari/Android profiles —
+# field reports show challenge rate dropping from ~80% to ~12% on
+# mobile endpoints when swapped in. When installed, the agent auto-
+# detects it and monkey-patches the instagrapi Client's sessions.
+# curl_cffi is MIT (commercial-safe).
+tls = [
+    "curl_cffi>=0.15",
+]
 
 [project.scripts]
 ig-agent = "src.cli:app"

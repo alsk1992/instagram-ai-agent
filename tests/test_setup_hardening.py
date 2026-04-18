@@ -219,6 +219,76 @@ def test_has_full_cookie_set_requires_three_minimum(monkeypatch: pytest.MonkeyPa
     assert ig._has_full_cookie_set({}) is False
 
 
+def test_session_refresh_days_default_is_zero(monkeypatch: pytest.MonkeyPatch):
+    """Research-driven fix: every relogin() is a high-suspicion event
+    for IG's 2026 risk models. Default must be 0 (disabled) — NOT the
+    old 7 from 2022-era advice."""
+    from src.plugins import ig
+    monkeypatch.delenv("IG_SESSION_REFRESH_DAYS", raising=False)
+    assert ig._session_refresh_days() == 0
+
+
+def test_session_refresh_days_honours_override(monkeypatch: pytest.MonkeyPatch):
+    from src.plugins import ig
+    monkeypatch.setenv("IG_SESSION_REFRESH_DAYS", "30")
+    assert ig._session_refresh_days() == 30
+    monkeypatch.setenv("IG_SESSION_REFRESH_DAYS", "bogus")
+    assert ig._session_refresh_days() == 0   # invalid → default
+
+
+def test_cookie_seed_accepts_supplementary_cookies(monkeypatch: pytest.MonkeyPatch):
+    """2026-research expansion: support ps_l/ps_n (Accounts Center),
+    wd/dpr/ig_lang (continuity hints), fbm_<appid> (FB SSO)."""
+    from src.plugins import ig
+    for k in (
+        "IG_SESSIONID", "IG_PS_L", "IG_PS_N", "IG_WD", "IG_DPR",
+        "IG_IG_LANG", "IG_MCD", "IG_CCODE", "IG_FBM_APPID",
+    ):
+        monkeypatch.setenv(k, f"v-{k}")
+    seed = ig._build_cookie_seed()
+    assert seed is not None
+    assert seed["ps_l"] == "v-IG_PS_L"
+    assert seed["ps_n"] == "v-IG_PS_N"
+    assert seed["wd"] == "v-IG_WD"
+    assert seed["dpr"] == "v-IG_DPR"
+    assert seed["ig_lang"] == "v-IG_IG_LANG"
+    assert seed["mcd"] == "v-IG_MCD"
+    assert seed["ccode"] == "v-IG_CCODE"
+    # fbm_<appid> lands under the canonical cookie name
+    assert seed["fbm_124024574287414"] == "v-IG_FBM_APPID"
+
+
+def test_tls_impersonation_profile_disabled_via_env(monkeypatch: pytest.MonkeyPatch):
+    from src.plugins import ig
+    for off_val in ("off", "OFF", "0", "false", "no"):
+        monkeypatch.setenv("IG_TLS_IMPERSONATE", off_val)
+        assert ig._tls_impersonation_profile() is None
+
+
+def test_tls_impersonation_profile_noop_without_curl_cffi(monkeypatch: pytest.MonkeyPatch):
+    """curl_cffi isn't in base deps — profile() must return None,
+    NOT raise, so the IGClient stays on plain requests.Session."""
+    from src.plugins import ig
+    monkeypatch.delenv("IG_TLS_IMPERSONATE", raising=False)
+    # curl_cffi is not installed in test env
+    assert ig._tls_impersonation_profile() is None
+
+
+def test_session_health_table_exists(tmp_path, monkeypatch):
+    from src.core import db as db_mod
+    from src.core import config as cfg_mod
+    fresh = tmp_path / "brain.db"
+    monkeypatch.setattr(cfg_mod, "DB_PATH", fresh)
+    monkeypatch.setattr(db_mod, "DB_PATH", fresh)
+    db_mod.close()
+    db_mod.init_db()
+    rows = db_mod.get_conn().execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='session_health'"
+    ).fetchall()
+    assert len(rows) == 1
+    db_mod.close()
+
+
 def test_default_user_agent_matches_device(monkeypatch: pytest.MonkeyPatch):
     """UA string must embed the device fingerprint values we claim, so
     cookie-based sessions have internally-consistent device claims."""

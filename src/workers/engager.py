@@ -78,4 +78,9 @@ def run_pass(cfg: NicheConfig, ig: IGClient | None = None, batch: int = 4) -> in
         db.action_log(action, row.get("target_user") or row.get("target_media"), result, 0)
         if result == "ok":
             done += 1
+    if done:
+        try:
+            cl.persist_settings()
+        except Exception:
+            pass
     return done

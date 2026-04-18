@@ -194,4 +194,10 @@ async def run_pass(cfg: NicheConfig, ig: IGClient | None = None, batch: int = 4)
             db.action_log("comment", c["comment_pk"], "failed", 0)
     if sent:
         await alerts.send(f"Replied to {sent} comment(s) on our posts.", level="info")
+        # Persist post-write so IG's rotated cookies (mid/rur/x-ig-www-
+        # claim/csrftoken) don't get lost on crash.
+        try:
+            cl.persist_settings()
+        except Exception:
+            pass
     return sent

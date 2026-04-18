@@ -179,6 +179,20 @@ SCHEMA = [
         snapshot_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
     )
     """,
+    # Session liveness log — every keep_alive / login probe result.
+    # Lets the dashboard show a survival curve + lets alerting rules
+    # fire on consecutive failures before a real write dies.
+    """
+    CREATE TABLE IF NOT EXISTS session_health (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        status      TEXT NOT NULL,   -- alive|dead|challenge|throttled|error
+        feed_items  INTEGER,
+        latency_ms  INTEGER,
+        note        TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_session_health_at ON session_health(at)",
     # DM funnel
     """
     CREATE TABLE IF NOT EXISTS dm_contacts (
