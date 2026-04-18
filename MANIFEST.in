@@ -1,0 +1,20 @@
+include README.md LICENSE NOTICE.md SECURITY.md CONTRIBUTING.md
+include pyproject.toml Makefile install.sh .env.example
+
+# Non-Python assets shipped in sdist so source installs get templates.
+recursive-include src/content/templates *.html *.json *.jpg *.png
+recursive-include data/ideas seed.json
+
+# Exclude dev-only + user-state directories
+recursive-exclude data/sessions *
+recursive-exclude data/media *
+recursive-exclude data/loras *
+recursive-exclude data/controlnet *
+recursive-exclude data/controlnet_models *
+recursive-exclude data/lora_datasets *
+recursive-exclude data/music/cache *
+recursive-exclude data/fonts *
+prune .venv
+prune .git
+prune __pycache__
+global-exclude *.pyc *.pyo .DS_Store

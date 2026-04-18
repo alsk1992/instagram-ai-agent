@@ -20,23 +20,43 @@ Describe your niche once. It mines trends, generates reels + carousels + memes, 
 
 ## 🚀 Quickstart
 
-One-line install — checks Python 3.11+ and ffmpeg, clones the repo, sets up `.venv`, installs deps, downloads Playwright chromium + fonts:
+Pick whichever install path matches how technical you feel today.
+
+### Option A — `pipx` (simplest, cross-platform)
+
+If you have Python 3.11+ and ffmpeg already:
+
+```bash
+pipx install git+https://github.com/alsk1992/instagram-ai-agent.git
+playwright install chromium
+ig-agent init
+```
+
+That's it. `pipx` handles the isolated venv automatically — no `source`, no `.venv` folder to manage, `ig-agent` just works from any directory. Works identically on macOS, Linux, Windows (WSL2 or native).
+
+No `pipx` yet? Install it first: `python -m pip install --user pipx && pipx ensurepath`.
+
+### Option B — one-line installer (also auto-installs ffmpeg hints)
+
+If you don't have Python or ffmpeg set up, or you want a local dev clone:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/alsk1992/instagram-ai-agent/main/install.sh | bash
 ```
 
-Then:
+Checks Python 3.11+ and ffmpeg, clones the repo, sets up `.venv`, installs deps, downloads Playwright chromium + fonts.
+
+### Then (both paths)
 
 ```bash
-cd instagram-ai-agent && source .venv/bin/activate
-
 ig-agent init              # 1. interactive wizard → niche.yaml + .env
 ig-agent login             # 2. verify Instagram credentials
 ig-agent generate -n 3     # 3. generate 3 posts into the queue
 ig-agent review            # 4. approve / reject them
 ig-agent drain             # 5. post the batch NOW (first-post proof)
 ig-agent run               # 6. start the full agent — long-running
+
+ig-agent doctor            # any time — diagnostic self-check
 ```
 
 Prefer `make`? `make install && make init && make login && make run`.

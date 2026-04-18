@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a new capability or meaningful improvement.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you solving?
+      description: Lead with the user-facing pain point, not the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Rough sketch is fine. Include any config knobs / CLI flags you'd expect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you think about? Why is the proposal better?
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Rough scope
+      options:
+        - 1 file / small change
+        - New module / feature
+        - New optional dep
+        - Architectural / multi-area
+    validations:
+      required: true

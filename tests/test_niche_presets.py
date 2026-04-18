@@ -1,4 +1,4 @@
-"""Noob-onboarding presets — every preset must produce a NicheConfig
+"""Starter-preset onboarding — every preset must produce a NicheConfig
 that validates cleanly."""
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from src.niche_presets import PRESETS, by_key, to_niche_config_fields
 
 
 def test_at_least_eight_presets_shipped():
-    """8 starter niches cover the most common use cases + give noobs
-    choice without overwhelm."""
+    """8 starter niches cover the most common use cases + give new
+    users a choice without overwhelming them."""
     assert len(PRESETS) >= 8
 
 

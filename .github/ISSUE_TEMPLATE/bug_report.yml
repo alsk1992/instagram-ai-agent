@@ -1,0 +1,65 @@
+name: Bug report
+description: Something isn't working — filed here for a fix.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report. Before you file, run
+        `ig-agent doctor` — it diagnoses 80% of setup issues and tells
+        you how to fix them.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Output of `git rev-parse HEAD` or the release tag.
+      placeholder: e.g. cf79c9d or v0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Ubuntu / Debian
+        - Other Linux
+        - WSL2
+        - Windows (native)
+        - Docker / container
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`ig-agent doctor` output"
+      description: Paste the full output. Redact any API keys.
+      render: shell
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected vs what you got.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log tail
+      description: "`tail -200 logs/orchestrator.log` or the tail of whatever failed. Redact secrets."
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I ran `ig-agent doctor` and checked the output
+          required: true
+        - label: I've redacted API keys / passwords / cookies from everything I pasted
+          required: true

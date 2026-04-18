@@ -32,6 +32,9 @@ run: ## start the full orchestrator (brain + generator + poster + engager)
 status: ## queue depth + health snapshot
 	$(IG) status
 
+doctor: ## diagnostic self-check — run when something's off
+	$(IG) doctor
+
 dashboard: ## start the local read-only web dashboard on :8080
 	$(IG) dashboard
 

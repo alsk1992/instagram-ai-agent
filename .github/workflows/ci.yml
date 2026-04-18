@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: "pip"
+          cache-dependency-path: "pyproject.toml"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: python -m ruff check src tests
+
+      - name: Run tests
+        run: python -m pytest -q --no-header
+
+      - name: Import smoke (every src module)
+        run: |
+          python -c "
+          import importlib, pkgutil, sys
+          fail = 0
+          for m in pkgutil.walk_packages(['src'], prefix='src.'):
+              if m.ispkg: continue
+              try:
+                  importlib.import_module(m.name)
+              except Exception as e:
+                  fail += 1
+                  print(f'IMPORT FAIL {m.name}: {e}')
+          sys.exit(1 if fail else 0)
+          "
+
+  install-script:
+    name: install.sh smoke (bash syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check install.sh
+        run: bash -n install.sh
+      - name: ShellCheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck -S warning install.sh || true    # warnings are advisory

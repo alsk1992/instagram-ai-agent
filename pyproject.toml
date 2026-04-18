@@ -1,9 +1,40 @@
 [project]
 name = "ig-agent"
 version = "0.1.0"
-description = "Autonomous niche-targeted Instagram content pipeline"
+description = "Autonomous AI agent for Instagram — generates reels, carousels, memes, quote cards on autopilot. LLM router, commercial-safe, 8-feature anti-detection."
 requires-python = ">=3.11"
 readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "alsk1992", email = "193760801+alsk1992@users.noreply.github.com" },
+]
+keywords = [
+    "instagram", "instagram-bot", "instagram-automation", "instagram-ai",
+    "ai-agent", "content-automation", "social-media-automation",
+    "llm", "autonomous-agent", "comfyui", "flux", "lora",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Office/Business",
+]
+
+[project.urls]
+Homepage = "https://github.com/alsk1992/instagram-ai-agent"
+Repository = "https://github.com/alsk1992/instagram-ai-agent"
+Issues = "https://github.com/alsk1992/instagram-ai-agent/issues"
+Discussions = "https://github.com/alsk1992/instagram-ai-agent/discussions"
 
 dependencies = [
     # Instagram
@@ -147,3 +178,12 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
+
+[tool.setuptools.package-data]
+# Non-Python assets shipped in the wheel so `pip install` works
+# out-of-the-box (not just `pip install -e .` from source).
+"src.content.templates.memes"     = ["*.json", "*.jpg", "*.png"]
+"src.content.templates.quote_cards" = ["*.html"]
+"src.content.templates.carousels" = ["*.html"]
+"src.content.templates.story"     = ["*.html", "*.json"]
+"src.dashboard_templates"         = ["*.html", "*.css", "*.js"]
