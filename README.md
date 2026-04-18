@@ -364,7 +364,7 @@ Security issues: see [SECURITY.md](SECURITY.md).
 
 [MIT](LICENSE). Do what you want, just don't blame us when you get rate-limited.
 
-Third-party component licences are tracked per-feature in config docstrings; the agent's `commercial=true` mode refuses any non-commercial-only dependency at load time.
+Third-party components are listed in [NOTICE.md](NOTICE.md) with their individual licences. The agent's `commercial=true` mode refuses any non-commercial-only dependency at load time.
 
 ---
 

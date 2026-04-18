@@ -19,14 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Third-party components ship under their own licences. The agent's
-`commercial=true` mode (default) enforces per-component licence gates at
-config load time to refuse non-commercial-only dependencies. See:
-
-  * src/brain/idea_bank.py::is_commercial_license  (licence allowlist)
-  * src/core/config.py::_lora_commercial_gate       (FLUX.1-dev block)
-  * src/core/config.py::_controlnet_commercial_gate (OpenPose/DensePose block)
-  * src/core/config.py::_sao_license_gate           (Stability Community Licence)
