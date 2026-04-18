@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
     paths:
+      - "scripts/record_real_walkthrough.py"
+      - "scripts/compose_real_walkthrough.py"
       - "scripts/gen_walkthrough_video.py"
       - "scripts/gen_demo_media.py"
       - "docs/media/*.svg"
@@ -23,7 +25,7 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg librsvg2-bin
+          sudo apt-get install -y ffmpeg librsvg2-bin fonts-dejavu
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -36,18 +38,29 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e "."
-          python -m pip install cairosvg mutagen imageio-ffmpeg
+          python -m pip install cairosvg mutagen imageio-ffmpeg Pillow asciinema
           # Kokoro brings torch as a transitive dep (~2GB). Runs on CPU in CI.
           python -m pip install kokoro soundfile
           python -m playwright install chromium
 
+      - name: Install agg (asciicast → GIF/MP4 renderer)
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: agg
+          git: https://github.com/asciinema/agg
+
       - name: Regenerate SVG + PNG demo media
         run: python scripts/gen_demo_media.py
 
-      - name: Generate narrated walkthrough video
+      - name: Record REAL dashboard + CLI executions
+        env:
+          IG_SKIP_WARMUP: "1"
+        run: python scripts/record_real_walkthrough.py
+
+      - name: Compose narrated walkthrough from real recordings
         env:
           IG_KOKORO_DEVICE: cpu
-        run: python scripts/gen_walkthrough_video.py --backend kokoro --voice af_bella
+        run: python scripts/compose_real_walkthrough.py
 
       - name: Commit regenerated media
         run: |
