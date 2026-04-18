@@ -73,3 +73,10 @@ jobs:
           else
             echo "No media changes to commit."
           fi
+
+      - name: Refresh walkthrough release asset (inline-embeddable URL)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The README <video> tag points at this exact URL — keep it fresh.
+          gh release upload walkthrough-v1 docs/media/walkthrough.mp4 --clobber

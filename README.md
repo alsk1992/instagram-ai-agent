@@ -6,15 +6,11 @@
 
 Describe your niche once. It mines trends, generates reels + carousels + memes, writes captions, posts on your schedule, replies to comments, and keeps itself out of shadowbans. Single process. Free tier by default. Commercial-safe.
 
-<a href="https://github.com/alsk1992/instagram-ai-agent/raw/main/docs/media/walkthrough.mp4">
-  <img src="docs/media/walkthrough.gif" alt="43-second walkthrough: real CLI + real dashboard, Kokoro voice-over" width="720">
-</a>
 
-**[▶ Play the 43-second walkthrough with audio (MP4)](https://github.com/alsk1992/instagram-ai-agent/raw/main/docs/media/walkthrough.mp4)** — real `ig-agent doctor`, `status`, `warmup-status` runs + real dashboard navigation, narrated by [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0, CPU).
 
-> **Is the dashboard real?** Yes — it's the same FastAPI app (`src/instagram_ai_agent/dashboard.py`) and Jinja templates users see when they run `ig-agent dashboard`. The posts/queue rows in the clip are seeded demo data (no Instagram account is attached to the sandbox), but every line of HTML/CSS/JS is what you get out of the box. The CLI recordings are real `ig-agent` invocations against a seeded `niche.yaml` + `brain.db`.
+<video src="https://github.com/alsk1992/instagram-ai-agent/releases/download/walkthrough-v1/walkthrough.mp4" controls muted playsinline width="720"></video>
 
-[🖼️ Dashboard preview](docs/screenshots/dashboard-home.png)
+_43-second walkthrough — real `ig-agent doctor`, `status`, `warmup-status` runs + real dashboard navigation, narrated by [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0, CPU)._
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)

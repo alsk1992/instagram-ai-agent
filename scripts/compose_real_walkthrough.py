@@ -228,26 +228,6 @@ def poster_from_mp4(mp4: Path, out_jpg: Path) -> None:
     )
 
 
-def mp4_to_gif(mp4: Path, out_gif: Path, width: int = 720, fps: int = 12) -> None:
-    """High-quality GIF via palettegen / paletteuse."""
-    ffmpeg = ffmpeg_bin()
-    palette = out_gif.with_suffix(".palette.png")
-    filt = f"fps={fps},scale={width}:-1:flags=lanczos"
-    subprocess.run(
-        [ffmpeg, "-y", "-i", str(mp4),
-         "-vf", f"{filt},palettegen=stats_mode=diff",
-         str(palette)],
-        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-    )
-    subprocess.run(
-        [ffmpeg, "-y", "-i", str(mp4), "-i", str(palette),
-         "-lavfi", f"{filt}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5",
-         str(out_gif)],
-        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-    )
-    palette.unlink(missing_ok=True)
-
-
 def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="ig_compose_"))
     try:
@@ -273,11 +253,6 @@ def main() -> int:
 
         print("  Deriving poster…")
         poster_from_mp4(final, MEDIA / "walkthrough-poster.jpg")
-
-        print("  Deriving GIF…")
-        mp4_to_gif(final, MEDIA / "walkthrough.gif", width=720, fps=12)
-        g = MEDIA / "walkthrough.gif"
-        print(f"  → {g.relative_to(ROOT)}  ({g.stat().st_size / 1024 / 1024:.1f} MB)")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return 0
