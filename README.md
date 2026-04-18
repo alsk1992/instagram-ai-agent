@@ -1,185 +1,245 @@
+<div align="center">
+
 # instagram-ai-agent
 
-> **Autonomous AI agent for Instagram.** Generates reels, carousels, memes, quote cards and engages with your audience on autopilot. Single-process, free-tier, commercial-safe.
+**The autonomous AI agent that runs your Instagram.**
 
-`instagram-ai-agent` is a niche-targeted content pipeline for Instagram — the AI does the mining, ideating, generating, captioning, scheduling, posting, replying, and self-health-monitoring. Describe your niche once in `niche.yaml`, give it an Instagram account, and it runs.
+Describe your niche once. It mines trends, generates reels + carousels + memes, writes captions, posts on your schedule, replies to comments, and keeps itself out of shadowbans. Single process. Free tier by default. Commercial-safe.
 
-Built on a free-tier stack: `instagrapi` transport, `OpenRouter`+`Groq`+`Gemini`+`Cerebras` LLM router, `Pollinations`/`Pexels`/`Pixabay` media, `Playwright` HTML-rendered visuals, `edge-tts`+`WhisperX`+`ffmpeg` for reels, optional `ComfyUI`+`FLUX`+`LoRA`+`ControlNet` for brand-consistent generation.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-671%20passing-brightgreen)](tests/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/alsk1992/instagram-ai-agent)
 
-## 🚀 One-line install
+[Quickstart](#-quickstart) · [Features](#-features) · [Architecture](#%EF%B8%8F-architecture) · [Safety](#%EF%B8%8F-safety--anti-detection) · [Configuration](#-configuration) · [FAQ](#-faq)
+
+</div>
+
+---
+
+## 🚀 Quickstart
+
+One-line install — checks Python 3.11+ and ffmpeg, clones the repo, sets up `.venv`, installs deps, downloads Playwright chromium + fonts:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/alsk1992/instagram-ai-agent/main/install.sh | bash
 ```
 
-Checks Python 3.11+/ffmpeg, clones the repo, creates `.venv`, installs deps + Playwright chromium + fonts. Then:
+Then:
 
 ```bash
 cd instagram-ai-agent && source .venv/bin/activate
 
-ig-agent init              # 1. wizard → niche.yaml + .env
-ig-agent login             # 2. verify IG credentials (handles email-code challenges)
+ig-agent init              # 1. interactive wizard → niche.yaml + .env
+ig-agent login             # 2. verify Instagram credentials
 ig-agent generate -n 3     # 3. generate 3 posts into the queue
-ig-agent review            # 4. walk + approve them
-ig-agent drain             # 5. post the approved batch NOW (skips best-hours queue)
-ig-agent run               # 6. start the full agent — schedules into best_hours_utc
+ig-agent review            # 4. approve / reject them
+ig-agent drain             # 5. post the batch NOW (first-post proof)
+ig-agent run               # 6. start the full agent — long-running
 ```
 
-Steps 3–5 prove the pipeline end-to-end with your first real post. After that, `ig-agent run` is the thing you leave running long-term — it generates on a 50-min loop and posts at your `best_hours_utc` windows.
+Prefer `make`? `make install && make init && make login && make run`.
 
-**Prefer Make?** `make install && make init && make login && make generate N=3 && make review && make run`.
+> **First-time user?** Jump to the [Safety section](#%EF%B8%8F-safety--anti-detection) before step 2 — pasting browser cookies in `.env` avoids IG's email-code challenge on fresh VPS installs.
 
-## 🛡️ Operating-safe best practices
+---
 
-Instagram aggressively punishes signals of automation. Follow these to stay out of challenge loops + shadowbans:
+## ✨ Features
 
-### One account = one VPS = one IP = one device fingerprint
-The agent generates a persistent `data/device.json` fingerprint the first time it runs; don't rotate it, don't copy it between machines, don't share IPs between accounts. Run each account on its own cheap VPS (a $5/mo droplet is plenty — Hetzner, Vultr, OVH, Contabo all work). Residential proxies from Smartproxy/Bright Data/IPRoyal make the IP less DC-looking.
+<table>
+<tr>
+<td width="50%" valign="top">
 
-### Paste browser cookies into `.env` BEFORE first login
-The single biggest challenge-avoidance trick: log into your IG account in a browser → DevTools → Application → Cookies → copy **all ten cookies** into the `IG_*` variables in `.env.example`. The agent will call `cl.set_settings()` with the full cookie jar and skip instagrapi's `/login` endpoint entirely. IG never sees a suspicious-login event because there's no login event — the session was already warm.
+### Content generation
+- **7 feed formats**: memes, quote cards, carousels, stock reels, AI reels, photos, human-subject photos
+- **Story formats**: quote, announcement, photo, video
+- **Narrative carousels**: character-consistent multi-slide stories
+- **Reel-to-carousel repurpose**: get a second life from your best reels
+- **Contrarian / hot-take mode**: polarising posts for engagement spikes
+- **Beat-synced cuts**: reels auto-sync scene boundaries to the music's downbeats
+- **Kinetic captions**: WhisperX word-level karaoke subtitles on every reel
 
-Cookies that matter (copy all you can; `sessionid` alone is minimum):
-| Cookie | Env var | Role |
+</td>
+<td width="50%" valign="top">
+
+### Intelligence layer
+- **LLM router**: OpenRouter + Groq + Gemini + Cerebras with automatic fallback
+- **90-archetype idea bank**: every post rides a proven hook formula, not an LLM guess
+- **Niche RAG**: drops PDFs/markdown into `data/knowledge/`, agent cites it
+- **Trend miner**: scrapes competitor + hashtag feeds, feeds the generator
+- **Reddit question harvester**: turns "what the community is asking" into content
+- **Event calendar**: Nager.Date holidays + user dates → seasonal posts
+- **Critic 2.0**: LLM rubric scores every draft on 7 dimensions before enqueue
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### Anti-detection layer ([details](#%EF%B8%8F-safety--anti-detection))
+- **Pre-post scroll**: mimics a human opening the app before posting
+- **Post cooldown**: 30–90min silence after each post before writes
+- **Typing delays**: length-proportional sleeps on comment/DM send
+- **First-comment hashtags** (opt-in): hashtags out of caption → self-reply
+- **Caption entropy guard**: near-duplicate detection vs your last 10 posts
+- **Aspect-ratio pre-flight**: rejects off-spec media before upload
+- **Client rotation**: recycles the TCP session every 2–4h
+- **Session refresh**: weekly forced re-login prevents silent decay
+- **Persistent device fingerprint**: pinned once, never rotated
+- **10-cookie seed**: full browser-cookie paste to skip first-login challenge
+
+</td>
+<td width="50%" valign="top">
+
+### Engagement & ops
+- **Reply-to-own-comments**: LLM triages + drafts on-brand replies
+- **Follow-back**: reciprocate when niche-aligned accounts follow you
+- **Story viewer**: views back the stories of recent engagers
+- **DM pipeline**: seed → curate → send with per-day caps
+- **Shadowban probe**: twice-daily reach drift + follower gain tracking
+- **Budget enforcement**: per-action daily caps that ramp over a 14-day warmup
+- **Auto-scheduling**: best-hours-UTC windows with randomised jitter
+- **Human-review gate**: toggle on/off; approve/reject every piece via CLI
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### Brand consistency (optional stack)
+- **FluxGym brand LoRA CLI**: prep → train externally → import → every image carries your brand identity
+- **ControlNet pose/depth/canny**: point at a reference image, every generation respects its composition
+- **Stable Audio Open Small**: commercial-safe generative music beds
+- **Real-ESRGAN + GFPGAN finish pass**: 2x upscale + face restoration
+
+</td>
+<td width="50%" valign="top">
+
+### Dev experience
+- **One-line installer** (POSIX, idempotent)
+- **Typer CLI**: `ig-agent` with `init / login / run / review / generate / status / dashboard / lora / controlnet`
+- **Makefile shortcuts**: `make install / init / run / test / dashboard`
+- **Local read-only dashboard**: `make dashboard` → `http://127.0.0.1:8080`
+- **671 tests**, 0 import failures across 71 modules
+- **Commercial-licence gates baked in**: FLUX.1-dev, OpenPose, StoryDiffusion code all blocked under `commercial=True`
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🏗️ Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                        ig-agent (one process)                        │
+│                                                                      │
+│   BRAIN                      CONTENT                   WORKERS       │
+│   ┌──────────────┐          ┌────────────────┐        ┌────────────┐ │
+│   │ trend_miner  │─────▶    │ format_picker  │──┐     │ poster     │ │
+│   │ competitor   │   ctx    │ idea_bank      │  │     │ engager    │ │
+│   │ watcher      │──▶ feed  │ generator x10  │──┤──▶──│ comment_r. │ │
+│   │ reddit       │          │ critic 2.0     │  │     │ follow_b.  │ │
+│   │ events       │          │ dedup (phash)  │  │     │ dm_worker  │ │
+│   │ rag          │          │ caption gen    │──┘     │ story_view │ │
+│   └──────────────┘          └────────────────┘        │ health     │ │
+│                                     │                 └────────────┘ │
+│                                     ▼                        ▲       │
+│                              ┌────────────────┐              │       │
+│                              │  content_queue │──────────────┘       │
+│                              │  engagement_q  │                      │
+│                              │  (SQLite WAL)  │                      │
+│                              └────────────────┘                      │
+│                                     │                                │
+└─────────────────────────────────────┼────────────────────────────────┘
+                                      ▼
+                              ┌────────────────┐
+                              │   instagrapi   │
+                              │   (transport)  │
+                              └────────────────┘
+                                      │
+                                 Instagram
+```
+
+Everything is scheduled by **APScheduler** inside a single async event loop. State lives in **SQLite WAL mode** — no external services, no Redis, no separate workers. Scales vertically: one account per process, one process per VPS.
+
+---
+
+## 🛡️ Safety & Anti-Detection
+
+Instagram's 2026 ML detector flags bot-script patterns on top of plain request inspection. The agent ships with an 8-feature behavioural layer, all on by default (toggles under `human_mimic` in niche.yaml):
+
+| Feature | What it does | Gap it closes |
 |---|---|---|
-| `sessionid` | `IG_SESSIONID` | The auth token. Required. |
-| `ds_user_id` | `IG_DS_USER_ID` | User ID, unlocks set_settings path |
-| `csrftoken` | `IG_CSRFTOKEN` | CSRF protection, required for POSTs |
-| `mid` | `IG_MID` | Device/account binding |
-| `ig_did` | `IG_DID` | Device UUID-level identity |
-| `datr` | `IG_DATR` | Persistent device marker (critical!) |
-| `rur` | `IG_RUR` | Datacenter routing hint |
-| `shbid` / `shbts` | `IG_SHBID` / `IG_SHBTS` | Shard routing |
-| `ig_nrcb` | `IG_NRCB` | Notification registration |
+| `pre_post_scroll` | Opens the feed + marks 3–5 posts as seen before uploading | Cold-post bot-script fingerprint |
+| `post_cooldown` | 30–90min mandatory silence on likes/follows/unfollows after a post | "Posted + engaged within seconds" pattern |
+| `comment_reply_delay` | 5–60min random stagger between replies in a batch | Burst-reply signal |
+| `first_comment_hashtags` (opt-in) | Moves hashtag block out of caption into a self-reply | 2026 ML hashtag-heavy caption downrank |
+| `typing_delays` | Length-proportional sleep before comment/DM submit | Sub-second submission timing |
+| `caption_entropy_check` | Rejects captions ≥85% similar to your last 10 | LLM-template drift that image-phash misses |
+| `aspect_ratio_check` | Pre-flight checks for 4:5 / 1:1 / 9:16 before upload | Silent server-side re-compression + downrank |
+| `rotate_client` | Recycles the TCP/HTTP-2 session every 2–4h | Long-lived connection botnet signal |
 
-### Geographic coherence
-Set `IG_COUNTRY_CODE`, `IG_TIMEZONE_OFFSET`, and `IG_LOCALE` to match the account's country-of-origin. A US-registered account logging in from a UK timezone looks suspicious.
+Plus the authentication layer:
 
-### Warmup period
-The agent auto-enters "warmup mode" on first login — capped per-action daily budgets that ramp up over 2 weeks. Don't override it for fresh accounts. `ig-agent warmup-status` shows where you are.
+- **Pin device fingerprint forever** — `data/device.json` is generated once and never rotated.
+- **Paste browser cookies into `.env`** to skip first-login challenges entirely. Supports all 10 IG web cookies (`sessionid`, `ds_user_id`, `csrftoken`, `mid`, `ig_did`, `datr`, `rur`, `shbid`, `shbts`, `ig_nrcb`). Full set triggers `cl.set_settings()` path with zero `/login` call.
+- **Geographic coherence** — set `IG_COUNTRY_CODE` / `IG_TIMEZONE_OFFSET` / `IG_LOCALE` to match the account's origin.
+- **Weekly session refresh** — `IG_SESSION_REFRESH_DAYS=7` forces a fresh login to prevent silent server-side TTL decay.
+- **14-day warmup ramp** — action budgets auto-scale from ~10% on day 1 to 100% by day 14.
 
-### One account per VPS — not one-to-many
-Don't run multiple accounts from the same process / VPS / IP. Each needs its own clone, its own `.venv`, its own `data/` directory, its own proxy. The architecture supports this trivially — `ig-agent` is scoped entirely to its working directory.
+### One account = one VPS = one IP
 
-### 2026-specific gotchas worth knowing
+Don't share any of: the process, the working directory, the IP, the device fingerprint. Residential proxies (Decodo / NetNut / IPBurger / Smartproxy) with **sticky 24–48h sessions over IPv4** are the 2026 consensus.
 
-Distilled from the instagrapi issue tracker + [multiaccounts.com 2025 fingerprint guide](https://multiaccounts.com/blog/instagram-fingerprint-detection-avoidance-guide-2025) + 2026 warmup playbooks:
+### 2026 gotchas
 
-- **IG now TLS/HTTP-2 fingerprints.** Python's `httpx`/`requests` produce a different TLS handshake than a real mobile app. This is largely outside our control from Python; the best defence is geographic coherence (matching your account's home region) + a residential proxy.
-- **Same Reel/meme across multiple accounts = instant network flag** within ~48h. Every account needs its own niche.yaml and its own generated content — don't copy approved posts between boxes.
-- **Stick your proxy for 24-48 hours.** Rotating every request marks you as a proxy farm. Most residential-proxy providers expose a "sticky session" toggle — use it with a multi-hour window.
-- **IPv4 over IPv6.** IPv6 pools are newer; IG flags them more aggressively.
-- **Pin `ig_did` + `datr` forever.** They're stored in your pasted cookies (or auto-generated in `data/device.json`) and must NEVER rotate within an account's lifetime.
-- **Warmup cadence (2026 playbook):**
-  - Days 1–3: 5–10 follows/day, 2–5 story views, ZERO interactions. No bio link yet (link-on-day-1 = instant shadowban).
-  - Days 4–7: 15–20 follows, 1–2 likes on non-competitor posts, 1 neutral story.
-  - Days 8–14: 30 follows, 5–10 comments, 1 Reel share.
-  - First feed post: day 7+. `ig-agent warmup-status` shows where you are.
-- **Session decay:** the agent force-refreshes your session every 7 days (`IG_SESSION_REFRESH_DAYS`). IG's server-side session TTL is shorter than the cookie TTL, and a decayed session looks like an automation-farm signal.
-- **Early-warning signals** in logs — watch for these to cut losses BEFORE a full ban:
-  - `feedback_required` with reason `"login_attempts"` → you're rate-limited, back off 12h+
-  - `challenge_required` response → 2-4h window before a hard block
-  - Instagrapi raising `PleaseWaitFewMinutes` repeatedly → reduce engagement budget
-- **Graph API is not a rescue.** Meta's official Graph API only does Reels posting on Business/Creator accounts and requires 2-12w approval. For personal-account automation, instagrapi-style private-API access is currently the only path.
+- **Same Reel across multiple accounts** triggers network-level flagging within ~48h. Every account needs unique content.
+- **Bio links on day 1** = instant shadowban. Wait day 7+.
+- **Meta Graph API** only does Reels on Business/Creator accounts (2–12 week approval). For personal accounts, instagrapi-style private API remains the only path.
 
-## What it does
+Full research notes + sources in the [safety deep-dive](#%EF%B8%8F-safety--anti-detection).
 
-1. **Mines the niche** — scrapes top posts of your hashtags + competitors via Instaloader, pushes trend signals to the brain.
-2. **Generates content** — picks a format (meme / quote card / carousel / stock reel / AI photo) from your configured mix, produces the asset, writes a niche-voice caption, runs an LLM critic, dedups via perceptual hash.
-3. **Schedules + posts** — approved items get assigned to your configured "best hours UTC", posted one at a time with exponential backoff on errors and a 24h cooldown on challenge/ban signals.
-4. **Engages** — drains an engagement queue of likes/follows/comments/story-views, capped by daily budget.
-5. **Watches** — polls a target account, pushes new posts to the context feed so the next generation can react.
-6. **Probes health** — tracks follower/ER drift + shadow-ban detection.
+---
 
-All in one `python -m src.orchestrator` process.
+## 🔧 Configuration
 
-## Stack (every piece free)
+Everything lives in two files: `niche.yaml` (the spine) and `.env` (credentials).
 
-- **LLM:** OpenRouter (29 free models, one key), Groq (fastest), Gemini Flash (highest daily quota), Cerebras (1M tok/day). First provider to respond wins; others are automatic fallbacks.
-- **Images:** Pillow (memes), Playwright → HTML/CSS (quote cards, carousel slides), Pollinations Flux (photo generation).
-- **Reels:** Pexels + Pixabay (stock footage) → ffmpeg (concat + 9:16 crop + LUT + caption burn-in) → edge-tts (voiceover) → faster-whisper (word-level timestamps for captions).
-- **Transport:** instagrapi with persistent device fingerprint, session, proxy, IMAP+TOTP challenge resolver.
-- **Scraping:** Instaloader for public profiles/hashtags.
-- **State:** SQLite brain.db (WAL mode), no external services.
-- **Scheduling:** APScheduler inside the async event loop.
-- **Alerts:** Telegram webhook.
-
-## Setup (the long version)
-
-If you'd rather do it manually instead of using the one-liner installer above:
-
-```bash
-git clone https://github.com/alsk1992/instagram-ai-agent.git
-cd instagram-ai-agent
-./scripts/bootstrap.sh          # venv, pip install, playwright, fonts, default meme bg
-source .venv/bin/activate
-ig-agent init                   # interactive wizard → writes niche.yaml + .env
-ig-agent login                  # verify IG credentials + persist session
-ig-agent generate --count 3     # make 3 pieces of content (optional preview)
-ig-agent review                 # approve/reject queue items
-ig-agent run                    # start the full orchestrator
-```
-
-Or use the Makefile shortcuts:
-
-```bash
-make install    # runs install.sh
-make init       # the wizard
-make login      # verify IG
-make run        # start orchestrator
-make test       # run the full pytest suite
-make status     # queue depth + health snapshot
-make dashboard  # local read-only web dashboard on :8080
-```
-
-### Minimum env you actually need
-
-You can run with just these two:
-
-```
-OPENROUTER_API_KEY=...          # pick up at https://openrouter.ai/keys
-IG_USERNAME=...
-IG_PASSWORD=...
-```
-
-Add `PEXELS_API_KEY` / `PIXABAY_API_KEY` when you turn on reel_stock. Add `IMAP_HOST` / `IMAP_USER` / `IMAP_PASS` to auto-resolve email challenges. Add `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` for alerts.
-
-## The `niche.yaml`
-
-This is the spine. Every generator reads from it. Example:
+### `niche.yaml` — the spine
 
 ```yaml
 niche: "home calisthenics for dads 35+"
-sub_topics: [bodyweight, mobility, recovery, progressions]
+sub_topics: [pullups, mobility, recovery]
 target_audience: "office workers rebuilding fitness at home"
-commercial: true
+commercial: true                       # toggles licence gates
 
 voice:
-  tone: [direct, no-nonsense, dry humour]
+  tone: [direct, dry humour, no-nonsense]
   forbidden: ["hustle", "grind culture"]
-  persona: "ex-office worker, 40, rebuilt body at home — talks like your mate at the pub."
-  cta_styles: ["save for later", "tag a mate", "follow for more"]
+  persona: "ex-office worker, 40, rebuilt body at home"
+  cta_styles: [save for later, tag a mate, follow for more]
 
 aesthetic:
   palette: ["#0a0a0a", "#f5f5f0", "#c9a961"]
   heading_font: "Archivo Black"
   body_font: "Inter"
   watermark: "@dadpilled"
-  lut: null
 
 hashtags:
   core: [calisthenics, homeworkout, bodyweighttraining]
-  growth: [fitnessmotivation, fittips, fathersover40]
-  long_tail: [pullupprogression, mobilitytraining, dadbodtransformation]
+  growth: [fittips, fathersover40]
   per_post: 15
 
-formats:
+formats:                               # distribution weights
   meme: 0.30
   quote_card: 0.15
   carousel: 0.25
   reel_stock: 0.20
-  reel_ai: 0.0
-  photo: 0.10
+  reel_ai: 0.05
+  photo: 0.05
 
 schedule:
   posts_per_day: 1
@@ -187,100 +247,129 @@ schedule:
   best_hours_utc: [14, 18, 21]
 
 safety:
-  require_review: true
+  require_review: true                 # toggle to false for autonomous mode
   critic_min_score: 0.65
-  dedup_hamming_threshold: 8
-
-competitors: [hybrid.athlete.x, calimove]
-watch_target: null
 ```
 
-## Commands
+Full schema: [`src/core/config.py::NicheConfig`](src/core/config.py). The wizard (`ig-agent init`) walks you through every field.
+
+### Minimum `.env`
 
 ```
-ig-agent init                   # wizard
-ig-agent login                  # verify + persist session
-ig-agent generate [--format F] [--count N]
-ig-agent review                 # approve/reject pending
-ig-agent post                   # post the next approved item once
-ig-agent drain --limit 3        # burst-post up to N approved
-ig-agent status                 # queue depth, health, backoff
-ig-agent add-content FORMAT PATH [PATH...] --caption "..." [--approve]
-ig-agent show-niche             # dump the full config
-ig-agent run                    # start the full orchestrator
+OPENROUTER_API_KEY=sk-or-v1-...        # at least one LLM provider
+IG_USERNAME=your_handle
+IG_PASSWORD=your_password
 ```
 
-## Directory layout
+Optional but recommended for production:
 
 ```
-ig-agent/
-├── niche.yaml                           # the spine
-├── .env                                 # secrets
-├── pyproject.toml
-├── start.sh / watchdog.sh
-├── scripts/
-│   ├── bootstrap.sh
-│   └── gen_default_assets.py
-├── src/
-│   ├── cli.py                           # typer entry
-│   ├── orchestrator.py                  # APScheduler wiring
-│   ├── core/
-│   │   ├── config.py / db.py / llm.py / alerts.py / budget.py / logging_setup.py
-│   ├── plugins/
-│   │   ├── ig.py                        # instagrapi wrapper
-│   │   ├── device.py                    # persistent fingerprint
-│   │   └── challenge.py                 # IMAP + TOTP resolver
-│   ├── content/
-│   │   ├── pipeline.py                  # format-pick → gen → critic → dedup → enqueue
-│   │   ├── captions.py / hashtags.py / critic.py / dedup.py / style.py
-│   │   └── generators/
-│   │       ├── meme.py                  # Pillow + template JSON
-│   │       ├── quote_card.py            # Playwright HTML
-│   │       ├── carousel.py              # Playwright HTML, multi-slide
-│   │       ├── photo.py                 # Pollinations Flux
-│   │       └── reel_stock.py            # Pexels + ffmpeg + edge-tts + whisper
-│   ├── brain/
-│   │   ├── scraper.py                   # Instaloader
-│   │   ├── competitor_intel.py
-│   │   ├── trend_miner.py
-│   │   └── watcher.py
-│   └── workers/
-│       ├── poster.py / engager.py / health.py
-└── data/
-    ├── brain.db                         # SQLite (WAL)
-    ├── device.json                      # never rotate
-    ├── sessions/{username}.json
-    ├── media/{staged,posted}/
-    ├── fonts/
-    └── luts/
+IG_PROXY=http://user:pass@proxy:port   # sticky residential
+IG_SESSIONID=<paste from browser>      # skips first-login challenge
+IG_DATR=<paste from browser>           # persistent device marker
+IMAP_HOST=imap.gmail.com               # auto-resolve email challenges
+IMAP_USER=you@gmail.com
+IMAP_PASS=app-password
+PEXELS_API_KEY=...                     # for reel_stock format
 ```
 
-## Safety defaults (intentionally conservative)
+See [`.env.example`](.env.example) for the full list with inline explanations.
 
-- `require_review = true` — every item waits in `pending_review` until you `ig-agent review`. Flip to false once the critic is calibrated to your voice.
-- `posts_per_day = 1` — start slow. New accounts should warm up for 14 days before posting at all.
-- Daily caps: 150 likes, 25 follows/unfollows, 15 comments, 0 DMs, 400 story views.
-- `backoff_until` state entry blocks **all** IG calls when hit; 24h on challenges, 1–3h on rate-limits.
-- PHash dedup against the last 60 posts at Hamming threshold 8.
-- Sticky proxy + device fingerprint (never rotate mid-life).
+---
 
-## Free-tier licensing — what the agent deliberately avoids
+## 📚 CLI reference
 
-Because `niche.yaml` is set to `commercial: true` by default, generators route around non-commercial tooling:
+```
+ig-agent init                          # interactive setup wizard
+ig-agent login                         # verify IG credentials, handle challenges
+ig-agent run                           # start the full orchestrator (long-running)
 
-- Uses **Flux.1 schnell** via Pollinations (Apache), not Flux-dev (non-commercial).
-- Uses **edge-tts** + optional CosyVoice 2 (Apache), not XTTS-v2 / F5 / ElevenLabs free tier.
-- Uses **Pexels / Pixabay** APIs (commercial OK, no attribution), not Videvo (mixed).
-- Uses **BiRefNet via rembg** (MIT), not BRIA-RMBG-2.0 (non-commercial).
+ig-agent generate [-n N]               # one-off: generate N posts into the queue
+ig-agent generate --format carousel    # force a specific format
+ig-agent generate --contrarian         # force hot-take mode for this batch
+ig-agent review                        # walk + approve/reject pending-review items
+ig-agent drain [--limit N]             # post up to N approved items immediately
 
-## What's not here yet
+ig-agent status                        # queue depth + last post + health
+ig-agent warmup-status                 # current day + scaled caps
+ig-agent dashboard                     # local web dashboard on :8080
+ig-agent show-niche                    # dump resolved niche.yaml
 
-Things the single-agent scope doesn't try to solve — they belong in a later swarm phase:
+ig-agent events [--push]               # upcoming holidays + user dates
+ig-agent reddit-questions [--push]     # niche-subreddit question harvester
+ig-agent index-knowledge [--clear]     # rebuild RAG index from data/knowledge/
+ig-agent seed-idea-bank [--fetch ...]  # reload archetype library
+ig-agent hashtag-review                # approve discovered hashtags
 
-- Multi-account orchestration (account pool, per-account proxies, warmup subsystem).
-- Dashboard UI (the `status` command is a CLI stand-in).
-- Paid/AI video generation (`reel_ai`) — enable by wiring a `fal.ai` / `Runway` / local `Wan2.2` caller in `content/generators/`.
-- DM funnel / engagement CRM.
-- Cloudflare R2 upload of finished media (currently lives on local disk).
+ig-agent lora prepare <dir> --name X --trigger W
+ig-agent lora import <file.safetensors> --name X --trigger W
+ig-agent lora list / activate / deactivate / remove
 
-Each is a bounded addition on top of this base.
+ig-agent controlnet set <ref.jpg> --mode pose|depth|canny
+ig-agent controlnet import-model <file.safetensors>
+ig-agent controlnet show / clear
+```
+
+---
+
+## 🧪 Testing
+
+```
+make test                              # pytest full suite (~12s)
+make lint                              # ruff
+```
+
+Every feature has tests. The suite is the contract.
+
+---
+
+## ❓ FAQ
+
+**Q: How much does this cost to run?**
+A: $0 to a few dollars/month. OpenRouter has 29 free models. Pexels/Pixabay/Pollinations/Freesound are free. A $5/mo VPS (Hetzner, Vultr, OVH, Contabo) is plenty. Residential proxy is optional but recommended — $10–30/mo if you take one. Image/reel generation costs nothing unless you opt into ComfyUI with paid GPU time.
+
+**Q: Will this get my account banned?**
+A: Any Instagram automation carries risk. The agent's defaults are conservative: 1 post/day, 14-day warmup, 30–90min post-cooldown, human-review gate. The anti-detection layer closes the biggest 2026 gaps but is not magic. **Use a fresh account you don't mind losing for the first few weeks** while you dial in the cadence.
+
+**Q: Does it work for multi-account?**
+A: One agent per account per VPS per IP. The architecture is single-tenant by design — multi-account sharing IPs or fingerprints is the #1 way to get the whole pool banned.
+
+**Q: Can I use it commercially (monetised page)?**
+A: Yes. `commercial: true` in `niche.yaml` activates licence gates that refuse non-commercial-only components (FLUX.1-dev, OpenPose, CodeFormer, pyiqa, StoryDiffusion code). Every default component is under a commercial-safe licence (MIT / Apache-2.0 / BSD / CC0 / CreativeML-Open-RAIL++).
+
+**Q: Does it support Threads / TikTok / X?**
+A: No. Instagram only. (The architecture is portable — fork it for any platform with an unofficial Python client.)
+
+**Q: What LLM models are used?**
+A: Whatever your LLM router has keys for. The default chain is OpenRouter (free tier) → Groq → Gemini Flash → Cerebras. Each route (captions, critic, scripts, vision) picks the best-suited free-tier model and falls back on failure.
+
+**Q: How do I add new content formats?**
+A: Write a generator under `src/content/generators/`, register it in `pipeline._dispatch`, add a weight field to `FormatMix`. See `story_carousel.py` for a recent example.
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome. The repo is small enough that a casual read of `src/orchestrator.py` + `src/content/pipeline.py` orients you in ~30 minutes.
+
+- **Bug reports**: open an issue with the log tail + your niche.yaml (redact secrets). Reproduce steps help a lot.
+- **PRs**: run `make test && make lint` first. Keep new features behind a config flag — user configs should never break on upgrade.
+- **Discussion**: for design-level questions (new format, new platform, licence concerns), open a GitHub Discussion rather than diving into a PR.
+
+Security issues: see [SECURITY.md](SECURITY.md).
+
+---
+
+## 📝 License
+
+[MIT](LICENSE). Do what you want, just don't blame us when you get rate-limited.
+
+Third-party component licences are tracked per-feature in config docstrings; the agent's `commercial=true` mode refuses any non-commercial-only dependency at load time.
+
+---
+
+<div align="center">
+
+Built with Claude Code 4.7 (1M context) · [GitHub](https://github.com/alsk1992/instagram-ai-agent)
+
+</div>
