@@ -20,7 +20,7 @@ mkdir -p logs
 LOG="logs/orchestrator.log"
 
 echo "=== ig-agent starting ==="
-nohup python -m src.orchestrator >> "$LOG" 2>&1 &
+nohup python -m instagram_ai_agent.orchestrator >> "$LOG" 2>&1 &
 PID=$!
 echo "$PID" > logs/orchestrator.pid
 echo "PID: $PID"

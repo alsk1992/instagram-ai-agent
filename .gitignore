@@ -25,3 +25,4 @@ logs/
 dist/
 build/
 .DS_Store
+src/data/

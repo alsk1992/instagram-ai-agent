@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
-TEMPLATES = ROOT / "src" / "content" / "templates" / "memes"
+TEMPLATES = ROOT / "src" / "instagram_ai_agent" / "content" / "templates" / "memes"
 FONTS = ROOT / "data" / "fonts"
 
 
