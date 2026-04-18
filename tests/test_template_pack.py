@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from src.content.generators import meme as meme_mod
-from src.content.generators import playwright_render as pr
-from src.core import config as cfg_mod
+from instagram_ai_agent.content.generators import meme as meme_mod
+from instagram_ai_agent.content.generators import playwright_render as pr
+from instagram_ai_agent.core import config as cfg_mod
 
 
 def _mkcfg(**kwargs):
@@ -240,7 +240,7 @@ def test_magazine_watermark_not_doubled():
 async def test_carousel_uses_one_template_for_all_slides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """Every slide in a single carousel must share the same template so the
     deck visually coheres — the picker runs ONCE per generate() call."""
-    from src.content.generators import carousel as carousel_mod
+    from instagram_ai_agent.content.generators import carousel as carousel_mod
 
     # Stub the LLM outline + rendering
     async def fake_outline(cfg, trend, n, *, contrarian=False):

@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from src.core import config as cfg_mod
-from src.core import db
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
 
 
 @pytest.fixture()
@@ -58,7 +58,7 @@ def test_dm_record_and_step_count(tmp_db):
 
 
 def test_interleave_helper():
-    from src.workers.dm_worker import _interleave
+    from instagram_ai_agent.workers.dm_worker import _interleave
     a = [{"u": 1}, {"u": 2}, {"u": 3}]
     b = [{"u": "a"}, {"u": "b"}]
     out = _interleave(a, b)
@@ -66,7 +66,7 @@ def test_interleave_helper():
 
 
 def test_cooldown_gate():
-    from src.workers.dm_worker import _cooldown_ok, COOLDOWN_HOURS
+    from instagram_ai_agent.workers.dm_worker import _cooldown_ok, COOLDOWN_HOURS
 
     # Never messaged → OK to send
     assert _cooldown_ok({"last_action_at": None}) is True
@@ -79,7 +79,7 @@ def test_cooldown_gate():
 
 
 def test_dm_sanitise_strips_quotes_and_labels():
-    from src.workers.dm_worker import _sanitise
+    from instagram_ai_agent.workers.dm_worker import _sanitise
     assert _sanitise('"Hi Hey there"') == "Hi Hey there"
     assert _sanitise("Message: real body") == "real body"
     assert _sanitise("line one\nline two") == "line one"

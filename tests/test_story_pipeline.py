@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from src.content.generators import format_picker
-from src.core import config as cfg_mod
-from src.core import db
-from src.core.budget import allowed
+from instagram_ai_agent.content.generators import format_picker
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
+from instagram_ai_agent.core.budget import allowed
 
 
 def _mkcfg(**kwargs):
@@ -89,7 +89,7 @@ def test_budget_story_post_separate_from_post(tmp_db):
 
 def test_story_format_queue_routing(tmp_db):
     """Story items in content_queue are found by the story poster, not feed."""
-    from src.workers import poster, story_poster
+    from instagram_ai_agent.workers import poster, story_poster
 
     cfg = _mkcfg()
     feed_id = db.content_enqueue(
@@ -109,7 +109,7 @@ def test_story_format_queue_routing(tmp_db):
 
 
 def test_story_scheduling_uses_spread_hours(tmp_db):
-    from src.workers.poster import _story_hours
+    from instagram_ai_agent.workers.poster import _story_hours
 
     # Given 3 peak hours, the story schedule should include intermediate hours
     hours = _story_hours([14, 18, 21])
@@ -119,8 +119,8 @@ def test_story_scheduling_uses_spread_hours(tmp_db):
 
 
 def test_story_scheduling_respects_per_day_cap(tmp_db):
-    from src.workers.poster import _schedule_pool
-    from src.core.config import STORY_FORMATS
+    from instagram_ai_agent.workers.poster import _schedule_pool
+    from instagram_ai_agent.core.config import STORY_FORMATS
 
     cfg = _mkcfg()
     # Queue 4 story items, per_day=2 — only 2 get today's slots, rest roll over

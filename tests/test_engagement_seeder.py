@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from src.brain import engagement_seeder
-from src.core import config as cfg_mod
-from src.core import db
+from instagram_ai_agent.brain import engagement_seeder
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
 
 
 def _mkcfg(**kwargs):

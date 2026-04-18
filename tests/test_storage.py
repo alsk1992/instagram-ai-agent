@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core import storage
+from instagram_ai_agent.core import storage
 
 
 def test_unconfigured_returns_false(monkeypatch: pytest.MonkeyPatch):

@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from src.brain import idea_bank
-from src.content import captions, contrarian_safety, critic, pipeline as pipe
-from src.core import config as cfg_mod
-from src.core import db
+from instagram_ai_agent.brain import idea_bank
+from instagram_ai_agent.content import captions, contrarian_safety, critic, pipeline as pipe
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
 
 
 def _mkcfg(**kwargs):
@@ -303,7 +303,7 @@ def test_safety_normalises_unicode_variants():
 async def test_carousel_outline_receives_contrarian_flag(monkeypatch):
     """Audit fix #4: carousel._llm_outline must get the flag so slide
     titles carry the contrarian framing, not just the caption."""
-    from src.content.generators import carousel as carousel_mod
+    from instagram_ai_agent.content.generators import carousel as carousel_mod
 
     captured: dict = {}
 
@@ -335,14 +335,14 @@ def test_carousel_outline_system_prompt_includes_contrarian_block():
     # so verify via string match on the function body if possible. Trust
     # the fake_outline route test above + the caption prompt test below
     # for direct semantic coverage.
-    import src.content.generators.carousel as carousel_mod
+    import instagram_ai_agent.content.generators.carousel as carousel_mod
     import inspect
     src = inspect.getsource(carousel_mod._llm_outline)
     assert "CONTRARIAN MODE" in src
 
 
 def test_meme_fill_text_accepts_contrarian_flag():
-    from src.content.generators import meme as meme_mod
+    from instagram_ai_agent.content.generators import meme as meme_mod
     import inspect
     src = inspect.getsource(meme_mod._fill_text)
     assert "contrarian" in src.lower()
@@ -350,7 +350,7 @@ def test_meme_fill_text_accepts_contrarian_flag():
 
 
 def test_quote_card_llm_quote_accepts_contrarian_flag():
-    from src.content.generators import quote_card as qc_mod
+    from instagram_ai_agent.content.generators import quote_card as qc_mod
     import inspect
     src = inspect.getsource(qc_mod._llm_quote)
     assert "contrarian" in src.lower()
@@ -358,7 +358,7 @@ def test_quote_card_llm_quote_accepts_contrarian_flag():
 
 
 def test_reel_stock_script_accepts_contrarian_flag():
-    from src.content.generators import reel_stock as reel_mod
+    from instagram_ai_agent.content.generators import reel_stock as reel_mod
     import inspect
     src = inspect.getsource(reel_mod._script)
     assert "contrarian" in src.lower()
@@ -382,7 +382,7 @@ async def test_pipeline_forces_contrarian_via_override(tmp_db, monkeypatch):
     captured_flags: dict = {}
 
     async def fake_dispatch(format_name, cfg_, trend_context, *, contrarian=False):
-        from src.content.generators.base import GeneratedContent
+        from instagram_ai_agent.content.generators.base import GeneratedContent
         return GeneratedContent(format=format_name, media_paths=["/x.jpg"], meta={"stub": True})
 
     async def fake_candidates(cfg_, format_name, content, *, n, knowledge=None, contrarian=False):
@@ -397,7 +397,7 @@ async def test_pipeline_forces_contrarian_via_override(tmp_db, monkeypatch):
         return [{**c, "critique": {"overall": 0.8, "verdict": "approve", "reasons": "ok"}}
                 for c in candidates]
 
-    from src.content import dedup
+    from instagram_ai_agent.content import dedup
     monkeypatch.setattr(pipe, "_dispatch", fake_dispatch)
     monkeypatch.setattr(pipe, "_build_caption_candidates", fake_candidates)
     monkeypatch.setattr(critic, "rank_candidates", fake_rank)
@@ -420,7 +420,7 @@ async def test_pipeline_skips_contrarian_when_disabled(tmp_db, monkeypatch):
     captured: dict = {"contrarian": None}
 
     async def fake_dispatch(format_name, cfg_, trend_context, *, contrarian=False):
-        from src.content.generators.base import GeneratedContent
+        from instagram_ai_agent.content.generators.base import GeneratedContent
         return GeneratedContent(format=format_name, media_paths=["/x.jpg"], meta={})
 
     async def fake_candidates(cfg_, format_name, content, *, n, knowledge=None, contrarian=False):
@@ -431,7 +431,7 @@ async def test_pipeline_skips_contrarian_when_disabled(tmp_db, monkeypatch):
         return [{**c, "critique": {"overall": 0.8, "verdict": "approve", "reasons": "ok"}}
                 for c in k["candidates"]]
 
-    from src.content import dedup
+    from instagram_ai_agent.content import dedup
     monkeypatch.setattr(pipe, "_dispatch", fake_dispatch)
     monkeypatch.setattr(pipe, "_build_caption_candidates", fake_candidates)
     monkeypatch.setattr(critic, "rank_candidates", fake_rank)
@@ -453,7 +453,7 @@ async def test_pipeline_drops_unsafe_contrarian_candidates(tmp_db, monkeypatch):
     cfg = _mkcfg(contrarian=cfg_mod.ContrarianConfig(enabled=True))
 
     async def fake_dispatch(format_name, cfg_, trend_context, *, contrarian=False):
-        from src.content.generators.base import GeneratedContent
+        from instagram_ai_agent.content.generators.base import GeneratedContent
         return GeneratedContent(format=format_name, media_paths=["/x.jpg"], meta={})
 
     async def fake_candidates(cfg_, format_name, content, *, n, knowledge=None, contrarian=False):
@@ -471,7 +471,7 @@ async def test_pipeline_drops_unsafe_contrarian_candidates(tmp_db, monkeypatch):
         return [{**c, "critique": {"overall": 0.8, "verdict": "approve", "reasons": "ok"}}
                 for c in candidates]
 
-    from src.content import dedup
+    from instagram_ai_agent.content import dedup
     monkeypatch.setattr(pipe, "_dispatch", fake_dispatch)
     monkeypatch.setattr(pipe, "_build_caption_candidates", fake_candidates)
     monkeypatch.setattr(critic, "rank_candidates", fake_rank)
@@ -492,7 +492,7 @@ async def test_pipeline_regens_when_all_candidates_unsafe(tmp_db, monkeypatch):
     )
 
     async def fake_dispatch(format_name, cfg_, trend_context, *, contrarian=False):
-        from src.content.generators.base import GeneratedContent
+        from instagram_ai_agent.content.generators.base import GeneratedContent
         return GeneratedContent(format=format_name, media_paths=["/x.jpg"], meta={})
 
     async def unsafe_only(cfg_, format_name, content, *, n, knowledge=None, contrarian=False):
@@ -507,7 +507,7 @@ async def test_pipeline_regens_when_all_candidates_unsafe(tmp_db, monkeypatch):
         rank_calls["n"] += 1
         return []  # irrelevant — should never be called since all candidates dropped
 
-    from src.content import dedup
+    from instagram_ai_agent.content import dedup
     monkeypatch.setattr(pipe, "_dispatch", fake_dispatch)
     monkeypatch.setattr(pipe, "_build_caption_candidates", unsafe_only)
     monkeypatch.setattr(critic, "rank_candidates", fake_rank)

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.content.generators import playwright_render
-from src.core import config as cfg_mod
+from instagram_ai_agent.content.generators import playwright_render
+from instagram_ai_agent.core import config as cfg_mod
 
 
 @pytest.fixture()

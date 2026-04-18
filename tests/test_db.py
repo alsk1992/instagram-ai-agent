@@ -9,7 +9,7 @@ import pytest
 @pytest.fixture()
 def tmp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Point config.DB_PATH at a tmp file and reset the module-local connection."""
-    from src.core import config, db
+    from instagram_ai_agent.core import config, db
 
     fresh = tmp_path / "brain.db"
     monkeypatch.setattr(config, "DB_PATH", fresh)

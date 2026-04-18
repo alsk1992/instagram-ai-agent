@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from src.core import config as cfg_mod
-from src.plugins import finish_pass
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.plugins import finish_pass
 
 
 def _mkcfg(**kwargs):
@@ -186,7 +186,7 @@ def test_reset_caches_clears_singletons():
 def test_codeformer_is_never_imported():
     import re
 
-    import src.plugins.finish_pass as fp_module
+    import instagram_ai_agent.plugins.finish_pass as fp_module
     src_text = Path(fp_module.__file__).read_text()
     # It's fine to *mention* CodeFormer in comments/docstrings (we do — to
     # explain why we avoid it). What matters is that the module never tries

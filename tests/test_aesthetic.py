@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from src.content import image_rank, local_aesthetic
-from src.core import config as cfg_mod
+from instagram_ai_agent.content import image_rank, local_aesthetic
+from instagram_ai_agent.core import config as cfg_mod
 
 
 def _mkcfg(**kwargs):
@@ -257,7 +257,7 @@ def test_rank_no_local_no_vision_falls_back_to_first_candidate(monkeypatch: pyte
 # ─── Commercial licensing hygiene ───
 def test_local_aesthetic_never_imports_nc_weights():
     import re
-    from src.content import local_aesthetic as la
+    from instagram_ai_agent.content import local_aesthetic as la
     text = Path(la.__file__).read_text()
     # Blocklist: CodeFormer, S-Lab, BeatNet, MusicGen weights, XTTS weights
     for nc_marker in ("codeformer", "s-lab", "beatnet", "musicgen", "xtts"):

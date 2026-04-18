@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from src.core import config as cfg_mod
-from src.plugins import video_overlay
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.plugins import video_overlay
 
 
 def _mkcfg(**kwargs):

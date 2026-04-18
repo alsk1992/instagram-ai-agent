@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from src.content.generators import carousel_repurpose as cr
-from src.core import config as cfg_mod
-from src.core import db
+from instagram_ai_agent.content.generators import carousel_repurpose as cr
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
 
 
 def _mkcfg(**kwargs):
@@ -635,9 +635,9 @@ async def test_run_once_enqueues_and_marks_dedup(
     monkeypatch.setattr(cr, "apply_lut_image", lambda p, c: p)
 
     # Stub caption + hashtags + dedup to avoid full dep chain
-    from src.content import captions as cap_mod
-    from src.content import hashtags as ht_mod
-    from src.content import dedup as dd_mod
+    from instagram_ai_agent.content import captions as cap_mod
+    from instagram_ai_agent.content import hashtags as ht_mod
+    from instagram_ai_agent.content import dedup as dd_mod
 
     async def fake_caption(*a, **k):
         return "Repurposed carousel caption."
@@ -701,7 +701,7 @@ async def test_run_once_skips_on_phash_duplicate_but_marks_source(
     monkeypatch.setattr(cr, "render_html_to_png", fake_render)
     monkeypatch.setattr(cr, "apply_lut_image", lambda p, c: p)
 
-    from src.content import dedup as dd_mod
+    from instagram_ai_agent.content import dedup as dd_mod
     monkeypatch.setattr(dd_mod, "compute_phash", lambda p: "deadbeef")
     monkeypatch.setattr(dd_mod, "is_duplicate", lambda h, thr: (True, "deadbeef"))
 
@@ -722,7 +722,7 @@ async def test_run_once_skips_on_phash_duplicate_but_marks_source(
 # ─── orchestrator wiring ───
 @pytest.mark.asyncio
 async def test_orchestrator_registers_repurpose_job_when_enabled():
-    from src import orchestrator
+    from instagram_ai_agent import orchestrator
     cfg = _mkcfg(reel_repurpose=cfg_mod.ReelRepurposeConfig(enabled=True))
     orch = orchestrator.Orchestrator(cfg)
     orch.start()
@@ -734,7 +734,7 @@ async def test_orchestrator_registers_repurpose_job_when_enabled():
 
 @pytest.mark.asyncio
 async def test_orchestrator_skips_repurpose_when_disabled():
-    from src import orchestrator
+    from instagram_ai_agent import orchestrator
     cfg = _mkcfg()  # disabled by default
     orch = orchestrator.Orchestrator(cfg)
     orch.start()

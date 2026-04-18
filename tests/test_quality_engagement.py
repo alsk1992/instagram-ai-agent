@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from src.core import config as cfg_mod
-from src.core import db
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
 
 
 def _mkcfg(**kwargs):
@@ -41,7 +41,7 @@ def tmp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 # ─── Coverage rotator ───
 def test_coverage_prefers_uncovered(tmp_db):
-    from src.brain import coverage
+    from instagram_ai_agent.brain import coverage
     cfg = _mkcfg()
     # Cover two of three topics
     coverage.record_coverage("pullups")
@@ -53,7 +53,7 @@ def test_coverage_prefers_uncovered(tmp_db):
 
 
 def test_coverage_report_sort(tmp_db):
-    from src.brain import coverage
+    from instagram_ai_agent.brain import coverage
     cfg = _mkcfg()
     coverage.record_coverage("pullups")
     report = coverage.coverage_report(cfg)
@@ -80,7 +80,7 @@ def test_all_watch_targets_empty_when_nothing_set():
 
 # ─── RSS parsing (no network) ───
 def test_rss_parser_rss2():
-    from src.brain.news_feed import _parse_items
+    from instagram_ai_agent.brain.news_feed import _parse_items
     xml = """<?xml version="1.0"?><rss version="2.0"><channel>
     <item><title>Hit a new PR</title><link>https://e.com/1</link><description>Body</description></item>
     <item><title>Mobility tip</title><link>https://e.com/2</link><description>desc</description></item>
@@ -92,7 +92,7 @@ def test_rss_parser_rss2():
 
 
 def test_rss_parser_atom():
-    from src.brain.news_feed import _parse_items
+    from instagram_ai_agent.brain.news_feed import _parse_items
     xml = """<?xml version="1.0"?>
     <feed xmlns="http://www.w3.org/2005/Atom">
       <entry>
@@ -108,13 +108,13 @@ def test_rss_parser_atom():
 
 
 def test_rss_parser_garbage_returns_empty():
-    from src.brain.news_feed import _parse_items
+    from instagram_ai_agent.brain.news_feed import _parse_items
     assert _parse_items("this isn't xml") == []
 
 
 # ─── Hashtag discovery ───
 def test_hashtag_mining(tmp_db):
-    from src.brain import hashtag_discovery
+    from instagram_ai_agent.brain import hashtag_discovery
     cfg = _mkcfg()
     # Insert competitor posts with hashtags
     tmp_db.competitor_upsert(
@@ -145,7 +145,7 @@ def test_hashtag_mining(tmp_db):
 
 
 def test_hashtag_approve_merges(tmp_db):
-    from src.brain import hashtag_discovery
+    from instagram_ai_agent.brain import hashtag_discovery
     cfg = _mkcfg()
     original_growth = list(cfg.hashtags.growth)
     # Fake niche.yaml save path so we don't accidentally overwrite real config
@@ -161,7 +161,7 @@ def test_hashtag_approve_merges(tmp_db):
 
 # ─── Comment replier filters ───
 def test_looks_like_spam_detects_links():
-    from src.workers.comment_replier import _looks_like_spam
+    from instagram_ai_agent.workers.comment_replier import _looks_like_spam
     assert _looks_like_spam("check out example.com/deal")
     assert _looks_like_spam("DM me for crypto profit")
     assert _looks_like_spam("🔥🔥🔥🔥")
@@ -172,7 +172,7 @@ def test_looks_like_spam_detects_links():
 
 
 def test_clean_strips_quotes_and_labels():
-    from src.workers.comment_replier import _clean
+    from instagram_ai_agent.workers.comment_replier import _clean
     assert _clean('"nice progress mate"') == "nice progress mate"
     assert _clean("Reply: thanks for the tip") == "thanks for the tip"
     assert _clean("line one\nline two") == "line one"
@@ -215,7 +215,7 @@ def test_follower_upsert_and_triage(tmp_db):
 
 # ─── Reciprocal engagement ───
 def test_reciprocal_queues_story_views(tmp_db):
-    from src.workers import follow_back
+    from instagram_ai_agent.workers import follow_back
     tmp_db.inbound_comment_upsert("c1", media_pk="m1", username="alice", user_id="42",
                                   text="nice", created_at="", is_own=False)
     tmp_db.inbound_comment_upsert("c2", media_pk="m1", username="bob", user_id="43",
@@ -229,13 +229,13 @@ def test_reciprocal_queues_story_views(tmp_db):
 
 # ─── Critic v2 additions ───
 def test_critic_rubric_mentions_new_dimensions():
-    from src.content.critic import _RUBRIC
+    from instagram_ai_agent.content.critic import _RUBRIC
     for dim in ("originality", "relevance_now", "competitor_edge", "weak_spots"):
         assert dim in _RUBRIC
 
 
 def test_critic_persona_block_includes_forbidden():
-    from src.content.critic import _persona_block
+    from instagram_ai_agent.content.critic import _persona_block
     cfg = _mkcfg()
     out = _persona_block(cfg)
     assert "grind" in out

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from src.content import captions_render as cr
-from src.content.transcribe import Word
-from src.core import config as cfg_mod
+from instagram_ai_agent.content import captions_render as cr
+from instagram_ai_agent.content.transcribe import Word
+from instagram_ai_agent.core import config as cfg_mod
 
 
 def _mkcfg(**kwargs):
@@ -205,7 +205,7 @@ def test_hex_to_bgr():
 
 # ─── Transcribe module guards ───
 def test_transcribe_whisperx_available_respects_disable_env(monkeypatch: pytest.MonkeyPatch):
-    from src.content import transcribe as tr
+    from instagram_ai_agent.content import transcribe as tr
     monkeypatch.setenv("WHISPERX_DISABLE", "1")
     assert tr._whisperx_available() is False
 

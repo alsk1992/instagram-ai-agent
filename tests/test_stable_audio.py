@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from src.core import config as cfg_mod
-from src.plugins import music as music_mod
-from src.plugins import stable_audio as sao
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.plugins import music as music_mod
+from instagram_ai_agent.plugins import stable_audio as sao
 
 
 def _mkcfg(**kwargs):
@@ -156,7 +156,7 @@ async def test_build_prompt_falls_back_to_niche_default_when_llm_fails(monkeypat
     async def broken_generate(*a, **k):
         raise RuntimeError("LLM down")
 
-    import src.core.llm as llm_mod
+    import instagram_ai_agent.core.llm as llm_mod
     monkeypatch.setattr(llm_mod, "generate", broken_generate, raising=False)
     out = await sao.build_prompt(cfg, scene_context="pullup struggle")
     # Matches the calisthenics niche default
@@ -174,7 +174,7 @@ async def test_build_prompt_uses_llm_output_when_available(monkeypatch):
         captured["system"] = system
         return '"heavy industrial techno, 140 BPM, minor key"'
 
-    import src.core.llm as llm_mod
+    import instagram_ai_agent.core.llm as llm_mod
     monkeypatch.setattr(llm_mod, "generate", fake_generate, raising=False)
     out = await sao.build_prompt(cfg, scene_context="gym montage")
     assert "industrial" in out
@@ -190,7 +190,7 @@ async def test_build_prompt_strips_trailing_newlines(monkeypatch):
     async def fake_generate(*a, **k):
         return "lofi study beat, 90 BPM\n\nwith additional content we don't want"
 
-    import src.core.llm as llm_mod
+    import instagram_ai_agent.core.llm as llm_mod
     monkeypatch.setattr(llm_mod, "generate", fake_generate, raising=False)
     out = await sao.build_prompt(cfg)
     assert "\n" not in out

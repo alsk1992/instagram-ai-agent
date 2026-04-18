@@ -2,7 +2,8 @@ include README.md LICENSE NOTICE.md SECURITY.md CONTRIBUTING.md
 include pyproject.toml Makefile install.sh .env.example
 
 # Non-Python assets shipped in sdist so source installs get templates.
-recursive-include src/content/templates *.html *.json *.jpg *.png
+recursive-include src/instagram_ai_agent/content/templates *.html *.json *.jpg *.png
+recursive-include src/instagram_ai_agent/dashboard_templates *.html *.css *.js
 recursive-include data/ideas seed.json
 
 # Exclude dev-only + user-state directories

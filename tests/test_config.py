@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.content.hashtags import build_hashtags, format_hashtags
-from src.core.config import (
+from instagram_ai_agent.content.hashtags import build_hashtags, format_hashtags
+from instagram_ai_agent.core.config import (
     Aesthetic,
     Budget,
     FormatMix,

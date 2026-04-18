@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from src.core import config as cfg_mod
-from src.content.generators import story_carousel as sc_gen
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.content.generators import story_carousel as sc_gen
 
 
 def _mkcfg(**kwargs):
@@ -133,7 +133,7 @@ async def test_outline_scenes_enforces_hook_and_cta(monkeypatch):
             {"kind": "content", "title": "C", "body": "c", "scene_prompt": "s3"},
         ]}
 
-    import src.content.generators.story_carousel as mod
+    import instagram_ai_agent.content.generators.story_carousel as mod
     monkeypatch.setattr(mod, "generate_json", fake_json)
 
     cfg = _mkcfg()
@@ -150,7 +150,7 @@ async def test_outline_scenes_raises_on_short_response(monkeypatch):
     async def fake_json(*a, **k):
         return {"slides": [{"kind": "hook", "title": "a", "body": "b", "scene_prompt": "s"}]}
 
-    import src.content.generators.story_carousel as mod
+    import instagram_ai_agent.content.generators.story_carousel as mod
     monkeypatch.setattr(mod, "generate_json", fake_json)
 
     cfg = _mkcfg()
@@ -187,7 +187,7 @@ async def test_seed_is_locked_across_slides(monkeypatch, tmp_path):
         out.write_bytes(b"\xff\xd8jpeg")
         return out
 
-    import src.content.generators.story_carousel as mod
+    import instagram_ai_agent.content.generators.story_carousel as mod
     monkeypatch.setattr(mod, "_outline_scenes", fake_outline)
     monkeypatch.setattr(mod, "_generate_slide_image", fake_gen_image)
     monkeypatch.setattr(mod, "render_html_to_png", fake_render)
@@ -227,7 +227,7 @@ async def test_seed_is_random_when_unset(monkeypatch, tmp_path):
         out.write_bytes(b"\xff\xd8jpeg")
         return out
 
-    import src.content.generators.story_carousel as mod
+    import instagram_ai_agent.content.generators.story_carousel as mod
     monkeypatch.setattr(mod, "_outline_scenes", fake_outline)
     monkeypatch.setattr(mod, "_generate_slide_image", fake_gen_image)
     monkeypatch.setattr(mod, "render_html_to_png", fake_render)
@@ -260,7 +260,7 @@ async def test_generate_returns_meta_with_consistency_path(monkeypatch, tmp_path
         out.write_bytes(b"\xff\xd8jpeg")
         return out
 
-    import src.content.generators.story_carousel as mod
+    import instagram_ai_agent.content.generators.story_carousel as mod
     monkeypatch.setattr(mod, "_outline_scenes", fake_outline)
     monkeypatch.setattr(mod, "_generate_slide_image", fake_gen_image)
     monkeypatch.setattr(mod, "render_html_to_png", fake_render)
@@ -293,7 +293,7 @@ async def test_generate_rejects_template_without_background_image(monkeypatch, t
         p.write_bytes(b"\xff\xd8\xff\xe0" + b"\x00" * 32)
         return p
 
-    import src.content.generators.story_carousel as mod
+    import instagram_ai_agent.content.generators.story_carousel as mod
     monkeypatch.setattr(mod, "_outline_scenes", fake_outline)
     monkeypatch.setattr(mod, "_generate_slide_image", fake_gen_image)
 
@@ -305,15 +305,15 @@ async def test_generate_rejects_template_without_background_image(monkeypatch, t
 # ─── Pipeline dispatch ───
 @pytest.mark.asyncio
 async def test_pipeline_dispatches_story_carousel(monkeypatch):
-    from src.content import pipeline as pipe
+    from instagram_ai_agent.content import pipeline as pipe
     captured = {}
 
     async def fake_gen(cfg_, trend_ctx):
         captured["called"] = True
-        from src.content.generators.base import GeneratedContent
+        from instagram_ai_agent.content.generators.base import GeneratedContent
         return GeneratedContent(format="story_carousel", media_paths=["/x.jpg"])
 
-    import src.content.generators.story_carousel as mod
+    import instagram_ai_agent.content.generators.story_carousel as mod
     monkeypatch.setattr(mod, "generate", fake_gen)
     cfg = _mkcfg()
     out = await pipe._dispatch("story_carousel", cfg, "some trend")
@@ -325,7 +325,7 @@ async def test_pipeline_dispatches_story_carousel(monkeypatch):
 def test_apply_lut_image_falls_back_on_ffmpeg_error(tmp_path: Path, monkeypatch):
     """Audit fix: if ffmpeg fails on a bad LUT, return the raw image
     instead of crashing the pipeline."""
-    from src.content import style
+    from instagram_ai_agent.content import style
 
     img = tmp_path / "in.jpg"
     img.write_bytes(b"\xff\xd8\xff\xe0fake")

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from src.core import config as cfg_mod
-from src.core import db, warmup
-from src.core.budget import allowed
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db, warmup
+from instagram_ai_agent.core.budget import allowed
 
 
 def _mkcfg():

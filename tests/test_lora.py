@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from src.core import config as cfg_mod
-from src.plugins import comfyui, lora
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.plugins import comfyui, lora
 
 
 def _mkcfg(**kwargs):
@@ -724,7 +724,7 @@ async def test_prepare_dataset_auto_caption_uses_vision(patched_dirs, tmp_path: 
         return "a man standing outside at dusk with soft orange backlight"
 
     # Patch the late-imported describe_image symbol on the llm module
-    import src.core.llm as llm_mod
+    import instagram_ai_agent.core.llm as llm_mod
     monkeypatch.setattr(llm_mod, "describe_image", fake_describe)
 
     summary = await lora.prepare_dataset(
@@ -748,7 +748,7 @@ async def test_prepare_dataset_survives_vision_failure(patched_dirs, tmp_path: P
     async def broken(url, question=""):
         raise RuntimeError("LLM down")
 
-    import src.core.llm as llm_mod
+    import instagram_ai_agent.core.llm as llm_mod
     monkeypatch.setattr(llm_mod, "describe_image", broken)
 
     summary = await lora.prepare_dataset(

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.core import config as cfg_mod
-from src.niche_presets import PRESETS, by_key, to_niche_config_fields
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.niche_presets import PRESETS, by_key, to_niche_config_fields
 
 
 def test_at_least_eight_presets_shipped():

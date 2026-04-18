@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.content.generators import human_photo
-from src.core import config as cfg_mod
+from instagram_ai_agent.content.generators import human_photo
+from instagram_ai_agent.core import config as cfg_mod
 
 
 def _base_cfg(**overrides):
@@ -141,7 +141,7 @@ def test_config_roundtrip_with_human_block(tmp_path: Path):
 def test_pipeline_routes_human_formats():
     """Verify dispatch doesn't fall through to ValueError for human formats."""
     import inspect
-    from src.content import pipeline
+    from instagram_ai_agent.content import pipeline
 
     src = inspect.getsource(pipeline._dispatch)
     assert 'format_name == "human_photo"' in src
@@ -149,7 +149,7 @@ def test_pipeline_routes_human_formats():
 
 
 def test_cli_helpers_set_human_weight():
-    from src.cli import _apply_human_weight
+    from instagram_ai_agent.cli import _apply_human_weight
 
     base = cfg_mod.FormatMix()  # default weights
     out = _apply_human_weight(base, 0.25)

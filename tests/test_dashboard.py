@@ -7,8 +7,8 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from src.core import config as cfg_mod
-from src.core import db
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
 
 
 @pytest.fixture()
@@ -44,7 +44,7 @@ def prepped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db.action_log("post", "fake_pk", "ok", 100)
     db.health_record(100, 20, 3, 0.04, False)
 
-    from src.dashboard import create_app
+    from instagram_ai_agent.dashboard import create_app
     app = create_app()
     yield TestClient(app)
     db.close()
@@ -85,7 +85,7 @@ def test_auth_enforced_when_env_set(prepped: TestClient, monkeypatch: pytest.Mon
     # Rebuild with auth env set
     monkeypatch.setenv("DASH_USER", "admin")
     monkeypatch.setenv("DASH_PASS", "secret")
-    from src.dashboard import create_app
+    from instagram_ai_agent.dashboard import create_app
     app = create_app()
     client = TestClient(app)
     r = client.get("/")

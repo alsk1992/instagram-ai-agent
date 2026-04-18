@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from src.core import config as cfg_mod
-from src.plugins import comfyui, controlnet
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.plugins import comfyui, controlnet
 
 
 def _mkcfg(**kwargs):
@@ -527,7 +527,7 @@ def test_atomic_copy_cleans_staging_on_failure(patched_dirs, tmp_path, monkeypat
     def boom(src_p, dst_p):
         raise OSError("fake rename failure")
 
-    monkeypatch.setattr("src.plugins.controlnet.os.replace", boom)
+    monkeypatch.setattr("instagram_ai_agent.plugins.controlnet.os.replace", boom)
     with pytest.raises(OSError):
         controlnet._atomic_copy(src, dest)
     # No .part leftovers
@@ -559,7 +559,7 @@ def test_lora_and_controlnet_stack_cleanly(patched_dirs, monkeypatch, tmp_path: 
     model/clip (pre-sampler), ControlNet wraps positive/negative
     conditioning (post-CLIPTextEncode, pre-sampler). Both can live in
     the same workflow without collision."""
-    from src.plugins import lora as lora_mod
+    from instagram_ai_agent.plugins import lora as lora_mod
 
     # Stub LoRA paths
     loras_dir = tmp_path / "loras"

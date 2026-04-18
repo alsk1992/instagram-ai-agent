@@ -1,7 +1,7 @@
 """Smoke tests for PHash + Hamming."""
 from __future__ import annotations
 
-from src.content.dedup import hamming
+from instagram_ai_agent.content.dedup import hamming
 
 
 def test_hamming_identical():

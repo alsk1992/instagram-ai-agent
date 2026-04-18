@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core import config as cfg_mod
+from instagram_ai_agent.core import config as cfg_mod
 
 
 def _mkcfg(**kwargs):
@@ -47,20 +47,20 @@ def test_music_query_template_substitutes_niche():
 
 # ─── Tokeniser + local pick ───
 def test_tokenise_strips_short_and_punct():
-    from src.plugins.music import _tokenise
+    from instagram_ai_agent.plugins.music import _tokenise
     assert _tokenise("Dad Strength Vibes!") == ["dad", "strength", "vibes"]
     assert _tokenise("") == []
     assert _tokenise("a 12 big") == ["big"]  # 2-char terms dropped
 
 
 def test_local_pick_returns_none_for_empty_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     monkeypatch.setattr(music, "MUSIC_DIR", tmp_path / "empty")
     assert music._local_pick("anything") is None
 
 
 def test_local_pick_scores_by_filename_tokens(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     music_root = tmp_path / "music"
     music_root.mkdir()
     # Three tracks
@@ -75,7 +75,7 @@ def test_local_pick_scores_by_filename_tokens(tmp_path: Path, monkeypatch: pytes
 
 
 def test_local_pick_parent_folder_scoring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     music_root = tmp_path / "music"
     (music_root / "lofi").mkdir(parents=True)
     (music_root / "upbeat").mkdir()
@@ -91,14 +91,14 @@ def test_local_pick_parent_folder_scoring(tmp_path: Path, monkeypatch: pytest.Mo
 
 # ─── Source chain ordering ───
 def test_find_music_disabled_short_circuits(monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     cfg = _mkcfg(music=cfg_mod.MusicConfig(enabled=False))
     out = asyncio.run(music.find_music(cfg))
     assert out is None
 
 
 def test_find_music_uses_local_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     music_root = tmp_path / "music"
     music_root.mkdir()
     (music_root / "calisthenics_upbeat.mp3").write_bytes(b"x" * 20_000)
@@ -115,7 +115,7 @@ def test_find_music_uses_local_first(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 def test_find_music_returns_none_when_all_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     monkeypatch.setattr(music, "MUSIC_DIR", tmp_path / "empty")
     monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
     monkeypatch.delenv("FREESOUND_API_KEY", raising=False)
@@ -127,7 +127,7 @@ def test_find_music_returns_none_when_all_fail(tmp_path: Path, monkeypatch: pyte
 def test_mix_filter_graph_shape(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """Verify the ffmpeg command we build is syntactically sensible
     and references every expected filter step."""
-    from src.plugins import audio_mix
+    from instagram_ai_agent.plugins import audio_mix
 
     captured: dict = {}
 
@@ -165,7 +165,7 @@ def test_mix_filter_graph_shape(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
 
 
 def test_mix_respects_fade_out_window():
-    from src.plugins import audio_mix
+    from instagram_ai_agent.plugins import audio_mix
     cfg = _mkcfg(music=cfg_mod.MusicConfig(fade_out_s=1.5))
     fade_out_start = max(0.0, 10.0 - cfg.music.fade_out_s)
     assert fade_out_start == pytest.approx(8.5)
@@ -173,7 +173,7 @@ def test_mix_respects_fade_out_window():
 
 # ─── Cache determinism + re-download short-circuit ───
 def test_cache_path_is_deterministic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     monkeypatch.setattr(music, "MUSIC_CACHE_DIR", tmp_path)
     a = music._cache_path("https://example.com/song.mp3", ".mp3")
     b = music._cache_path("https://example.com/song.mp3", ".mp3")
@@ -183,7 +183,7 @@ def test_cache_path_is_deterministic(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 def test_cache_hit_short_circuits_download(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     monkeypatch.setattr(music, "MUSIC_CACHE_DIR", tmp_path)
     url = "https://example.com/pre-cached.mp3"
     dest = music._cache_path(url)
@@ -203,7 +203,7 @@ def test_cache_hit_short_circuits_download(tmp_path: Path, monkeypatch: pytest.M
 
 # ─── Network-shape: Pixabay + Freesound request contract ───
 def test_pixabay_sends_key_and_query(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    from src.plugins import music as music_mod
+    from instagram_ai_agent.plugins import music as music_mod
     calls: list[dict] = []
 
     class FakeResp:
@@ -235,7 +235,7 @@ def test_pixabay_sends_key_and_query(monkeypatch: pytest.MonkeyPatch, tmp_path: 
 
 
 def test_freesound_filter_requires_cc0_license(monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music as music_mod
+    from instagram_ai_agent.plugins import music as music_mod
     calls: list[dict] = []
 
     class FakeResp:
@@ -261,7 +261,7 @@ def test_freesound_filter_requires_cc0_license(monkeypatch: pytest.MonkeyPatch):
 
 # ─── License detection (the MEDIUM fix) ───
 def test_detect_license_folder_cc0(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     root = tmp_path / "music"
     (root / "cc0").mkdir(parents=True)
     track = root / "cc0" / "a.mp3"
@@ -271,7 +271,7 @@ def test_detect_license_folder_cc0(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
 
 def test_detect_license_sidecar_wins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     root = tmp_path / "music"
     (root / "cc0").mkdir(parents=True)
     track = root / "cc0" / "a.mp3"
@@ -284,7 +284,7 @@ def test_detect_license_sidecar_wins(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 def test_detect_license_unknown_is_labelled_honestly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     root = tmp_path / "music"
     (root / "misc").mkdir(parents=True)
     track = root / "misc" / "a.mp3"
@@ -294,7 +294,7 @@ def test_detect_license_unknown_is_labelled_honestly(tmp_path: Path, monkeypatch
 
 
 def test_local_pick_stamps_detected_license(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import music
+    from instagram_ai_agent.plugins import music
     root = tmp_path / "music"
     (root / "cc0").mkdir(parents=True)
     (root / "cc0" / "dad_upbeat.mp3").write_bytes(b"x" * 20_000)

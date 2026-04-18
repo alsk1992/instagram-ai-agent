@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from src.core import config as cfg_mod
-from src.core import db
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
 
 
 def _mkcfg(**kwargs):
@@ -37,7 +37,7 @@ def tmp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 # ─── Image ranker ───
 @pytest.mark.asyncio
 async def test_image_rank_single_shortcut():
-    from src.content import image_rank
+    from instagram_ai_agent.content import image_rank
     cfg = _mkcfg()
     out = await image_rank.rank(cfg, ["/tmp/only.jpg"])
     assert out == [{"path": "/tmp/only.jpg", "score": 1.0, "reason": "only candidate"}]
@@ -47,7 +47,7 @@ async def test_image_rank_single_shortcut():
 async def test_image_rank_no_vision_no_local_preserves_order(monkeypatch: pytest.MonkeyPatch):
     """With local_aesthetic disabled AND no vision provider, rank preserves
     input order — first candidate takes the top slot."""
-    from src.content import image_rank
+    from instagram_ai_agent.content import image_rank
 
     monkeypatch.setattr(image_rank, "_vision_ready", lambda: False)
     cfg = _mkcfg(safety=cfg_mod.Safety(local_aesthetic=False, vision_critic=True))
@@ -59,7 +59,7 @@ async def test_image_rank_no_vision_no_local_preserves_order(monkeypatch: pytest
 
 @pytest.mark.asyncio
 async def test_image_rank_sorts_by_score(monkeypatch: pytest.MonkeyPatch):
-    from src.content import image_rank
+    from instagram_ai_agent.content import image_rank
 
     monkeypatch.setattr(image_rank, "_vision_ready", lambda: True)
 
@@ -83,7 +83,7 @@ async def test_image_rank_sorts_by_score(monkeypatch: pytest.MonkeyPatch):
 
 # ─── Retro learning ───
 def test_top_posts_order_by_engagement(tmp_db):
-    from src.brain import retro
+    from instagram_ai_agent.brain import retro
 
     now = db.now_iso()
     # Pretend 3 posts with different engagement
@@ -100,7 +100,7 @@ def test_top_posts_order_by_engagement(tmp_db):
 
 
 def test_performance_by_format(tmp_db):
-    from src.brain import retro
+    from instagram_ai_agent.brain import retro
 
     db.post_record("p1", None, "meme", "m1")
     db.post_record("p2", None, "meme", "m2")
@@ -116,7 +116,7 @@ def test_performance_by_format(tmp_db):
 
 
 def test_push_retro_context_writes_signal(tmp_db):
-    from src.brain import retro
+    from instagram_ai_agent.brain import retro
     db.post_record("p1", None, "meme", "funny hook line\ntail")
     db.post_update_metrics("p1", likes=99, comments=12)
     pushed = retro.push_retro_context(limit=1)
@@ -128,7 +128,7 @@ def test_push_retro_context_writes_signal(tmp_db):
 
 # ─── Story viewer scoring ───
 def test_story_viewer_already_viewed_today(tmp_db):
-    from src.workers import story_viewer
+    from instagram_ai_agent.workers import story_viewer
 
     db.action_log("story_view", "uid-123", "ok", 0)
     assert story_viewer._already_viewed_today("uid-123") is True
@@ -136,7 +136,7 @@ def test_story_viewer_already_viewed_today(tmp_db):
 
 
 def test_story_viewer_queued_today_idempotent(tmp_db):
-    from src.workers import story_viewer
+    from instagram_ai_agent.workers import story_viewer
 
     db.engagement_enqueue("story_view", target_user="uid-1")
     assert story_viewer._already_queued_today("uid-1") is True
@@ -146,13 +146,13 @@ def test_story_viewer_queued_today_idempotent(tmp_db):
 # ─── ComfyUI client ───
 def test_comfyui_unconfigured_is_false(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("COMFYUI_URL", raising=False)
-    from src.plugins import comfyui
+    from instagram_ai_agent.plugins import comfyui
     assert comfyui.configured() is False
 
 
 def test_comfyui_load_default_workflow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setenv("COMFYUI_URL", "http://localhost:8188")
-    from src.plugins import comfyui
+    from instagram_ai_agent.plugins import comfyui
 
     # Point WORKFLOW_DIR at empty tmp
     monkeypatch.setattr(comfyui, "WORKFLOW_DIR", tmp_path / "workflows")
@@ -162,7 +162,7 @@ def test_comfyui_load_default_workflow(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 
 def test_comfyui_apply_params_fills_prompt_and_seed(monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import comfyui
+    from instagram_ai_agent.plugins import comfyui
 
     wf = comfyui._load_workflow()
     out = comfyui._apply_params(
@@ -178,7 +178,7 @@ def test_comfyui_apply_params_fills_prompt_and_seed(monkeypatch: pytest.MonkeyPa
 
 
 def test_comfyui_collect_image_refs():
-    from src.plugins.comfyui import _collect_image_refs
+    from instagram_ai_agent.plugins.comfyui import _collect_image_refs
     outputs = {
         "9": {"images": [{"filename": "a.png", "subfolder": "", "type": "output"}]},
         "10": {"images": [{"filename": "b.png", "subfolder": "", "type": "output"},
@@ -191,7 +191,7 @@ def test_comfyui_collect_image_refs():
 
 # ─── Config still roundtrips ───
 def test_safety_image_candidates_knob():
-    from src.core.config import NicheConfig, Safety
+    from instagram_ai_agent.core.config import NicheConfig, Safety
     cfg = _mkcfg(safety=Safety(image_candidates=3))
     dumped = cfg.model_dump(mode="json")
     loaded = NicheConfig.model_validate(dumped)

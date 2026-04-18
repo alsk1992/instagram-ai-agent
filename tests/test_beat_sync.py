@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.plugins import beat_sync
+from instagram_ai_agent.plugins import beat_sync
 
 
 # ─── Pure conversion helpers ───
@@ -172,7 +172,7 @@ def test_vo_duration_is_preserved():
 
 # ─── Audit follow-ups ───
 def test_music_config_exposes_beat_knobs():
-    from src.core.config import MusicConfig
+    from instagram_ai_agent.core.config import MusicConfig
     mc = MusicConfig()
     assert hasattr(mc, "beat_window_s")
     assert hasattr(mc, "beat_min_scene_s")

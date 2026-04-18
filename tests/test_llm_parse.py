@@ -1,7 +1,7 @@
 """Sanity tests for LLM JSON extraction (the repair/strip logic)."""
 from __future__ import annotations
 
-from src.core.llm import _extract_balanced, _strip_json
+from instagram_ai_agent.core.llm import _extract_balanced, _strip_json
 
 
 def test_strip_markdown_fences():

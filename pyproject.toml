@@ -1,5 +1,5 @@
 [project]
-name = "ig-agent"
+name = "instagram-ai-agent"
 version = "0.1.0"
 description = "Autonomous AI agent for Instagram — generates reels, carousels, memes, quote cards on autopilot. LLM router, commercial-safe, 8-feature anti-detection."
 requires-python = ">=3.11"
@@ -29,12 +29,6 @@ classifiers = [
     "Topic :: Multimedia :: Video",
     "Topic :: Office/Business",
 ]
-
-[project.urls]
-Homepage = "https://github.com/alsk1992/instagram-ai-agent"
-Repository = "https://github.com/alsk1992/instagram-ai-agent"
-Issues = "https://github.com/alsk1992/instagram-ai-agent/issues"
-Discussions = "https://github.com/alsk1992/instagram-ai-agent/discussions"
 
 dependencies = [
     # Instagram
@@ -83,6 +77,12 @@ dependencies = [
     # Object storage (optional; only used when R2 configured)
     "boto3>=1.35",
 ]
+
+[project.urls]
+Homepage = "https://github.com/alsk1992/instagram-ai-agent"
+Repository = "https://github.com/alsk1992/instagram-ai-agent"
+Issues = "https://github.com/alsk1992/instagram-ai-agent/issues"
+Discussions = "https://github.com/alsk1992/instagram-ai-agent/discussions"
 
 [project.optional-dependencies]
 dev = [
@@ -161,7 +161,7 @@ tls = [
 ]
 
 [project.scripts]
-ig-agent = "src.cli:app"
+ig-agent = "instagram_ai_agent.cli:_friendly_main"
 
 [tool.ruff]
 line-length = 100
@@ -176,14 +176,14 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["src*"]
+where = ["src"]
+include = ["instagram_ai_agent*"]
 
 [tool.setuptools.package-data]
 # Non-Python assets shipped in the wheel so `pip install` works
 # out-of-the-box (not just `pip install -e .` from source).
-"src.content.templates.memes"     = ["*.json", "*.jpg", "*.png"]
-"src.content.templates.quote_cards" = ["*.html"]
-"src.content.templates.carousels" = ["*.html"]
-"src.content.templates.story"     = ["*.html", "*.json"]
-"src.dashboard_templates"         = ["*.html", "*.css", "*.js"]
+"instagram_ai_agent.content.templates.memes"     = ["*.json", "*.jpg", "*.png"]
+"instagram_ai_agent.content.templates.quote_cards" = ["*.html"]
+"instagram_ai_agent.content.templates.carousels" = ["*.html"]
+"instagram_ai_agent.content.templates.story"     = ["*.html", "*.json"]
+"instagram_ai_agent.dashboard_templates"         = ["*.html", "*.css", "*.js"]

@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from src.brain import events as events_mod
-from src.core import config as cfg_mod
-from src.core import db
+from instagram_ai_agent.brain import events as events_mod
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
 
 
 def _mkcfg(**kwargs):

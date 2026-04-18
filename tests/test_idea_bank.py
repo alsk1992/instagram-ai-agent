@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from src.brain import idea_bank
-from src.core import config as cfg_mod
-from src.core import db
+from instagram_ai_agent.brain import idea_bank
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
 
 
 def _mkcfg(**kwargs):
@@ -189,7 +189,7 @@ def test_insert_many_returns_only_new_rows(tmp_db):
 def test_mark_used_fires_only_after_successful_enqueue(tmp_db, monkeypatch):
     """A failed generation must NOT consume a recency slot."""
     import asyncio
-    from src.content import pipeline as pipe
+    from instagram_ai_agent.content import pipeline as pipe
 
     idea_bank.seed_from_file()
     cfg = _mkcfg()
@@ -301,8 +301,8 @@ def test_all_formats_have_coverage(tmp_db):
 def test_pipeline_meta_records_archetype(tmp_db, monkeypatch: pytest.MonkeyPatch):
     """When generate_one enqueues content, the chosen archetype lands in meta."""
     import asyncio
-    from src.content import pipeline as pipe
-    from src.content.generators.base import GeneratedContent
+    from instagram_ai_agent.content import pipeline as pipe
+    from instagram_ai_agent.content.generators.base import GeneratedContent
 
     idea_bank.seed_from_file()
     cfg = _mkcfg()
@@ -338,11 +338,11 @@ def test_pipeline_meta_records_archetype(tmp_db, monkeypatch: pytest.MonkeyPatch
         return out
 
     monkeypatch.setattr(pipe, "_build_caption_candidates", fake_caption_candidates)
-    from src.content import critic as critic_mod
+    from instagram_ai_agent.content import critic as critic_mod
     monkeypatch.setattr(critic_mod, "rank_candidates", fake_rank)
 
     # Avoid dedup IO by stubbing compute_phash
-    from src.content import dedup
+    from instagram_ai_agent.content import dedup
     monkeypatch.setattr(dedup, "compute_phash", lambda p: "0" * 32)
     monkeypatch.setattr(dedup, "is_duplicate", lambda h, thr, lookback=60: (False, None))
 

@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.brain import reddit_harvester as rh
-from src.core import config as cfg_mod
-from src.core import db
+from instagram_ai_agent.brain import reddit_harvester as rh
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
 
 
 def _mkcfg(**kwargs):

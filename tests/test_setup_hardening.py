@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from src.core import config as cfg_mod
-from src.core import db
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
 
 
 def _mkcfg(**kwargs):
@@ -43,7 +43,7 @@ def tmp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def test_format_picker_skips_reel_stock_when_no_api_keys(monkeypatch: pytest.MonkeyPatch, tmp_db):
     """Audit blocker: reel_stock fails hard when both Pexels + Pixabay
     keys are missing. Picker must skip it instead of burning cycles."""
-    from src.content.generators import format_picker
+    from instagram_ai_agent.content.generators import format_picker
 
     monkeypatch.delenv("PEXELS_API_KEY", raising=False)
     monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
@@ -66,7 +66,7 @@ def test_format_picker_prunes_unrunnable_when_alternatives_exist(
 ):
     """When reel_stock is unrunnable but meme is weighted, picker
     NEVER returns reel_stock."""
-    from src.content.generators import format_picker
+    from instagram_ai_agent.content.generators import format_picker
 
     monkeypatch.delenv("PEXELS_API_KEY", raising=False)
     monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
@@ -84,7 +84,7 @@ def test_format_picker_prunes_unrunnable_when_alternatives_exist(
 def test_format_picker_allows_reel_stock_when_pixabay_set(
     monkeypatch: pytest.MonkeyPatch, tmp_db,
 ):
-    from src.content.generators import format_picker
+    from instagram_ai_agent.content.generators import format_picker
 
     monkeypatch.delenv("PEXELS_API_KEY", raising=False)
     monkeypatch.setenv("PIXABAY_API_KEY", "fake-test-key")
@@ -94,7 +94,7 @@ def test_format_picker_allows_reel_stock_when_pixabay_set(
 def test_format_picker_allows_reel_stock_when_pexels_set(
     monkeypatch: pytest.MonkeyPatch, tmp_db,
 ):
-    from src.content.generators import format_picker
+    from instagram_ai_agent.content.generators import format_picker
 
     monkeypatch.setenv("PEXELS_API_KEY", "fake-test-key")
     monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
@@ -102,7 +102,7 @@ def test_format_picker_allows_reel_stock_when_pexels_set(
 
 
 def test_format_picker_non_gated_formats_always_runnable():
-    from src.content.generators import format_picker
+    from instagram_ai_agent.content.generators import format_picker
 
     for fmt in ("meme", "quote_card", "carousel", "reel_ai", "photo", "human_photo"):
         assert format_picker._format_is_runnable(fmt) is True, fmt
@@ -113,7 +113,7 @@ def test_challenge_needs_manual_code_is_separate_exception():
     """Audit blocker: challenge handler was raising RuntimeError which
     trapped into a 24h cooldown. New exception type lets ig.py handle
     this case without cooldown."""
-    from src.plugins import challenge
+    from instagram_ai_agent.plugins import challenge
     assert issubclass(challenge.ChallengeNeedsManualCode, Exception)
     # Must NOT be a RuntimeError subclass — keeps except-RuntimeError
     # handlers from accidentally catching it.
@@ -123,7 +123,7 @@ def test_challenge_needs_manual_code_is_separate_exception():
 def test_challenge_handler_raises_specific_exception_without_imap(
     monkeypatch: pytest.MonkeyPatch, tmp_db,
 ):
-    from src.plugins import challenge
+    from instagram_ai_agent.plugins import challenge
 
     # No IMAP configured → fetch_email_code returns None
     monkeypatch.setattr(challenge, "fetch_email_code", lambda *a, **k: None)
@@ -140,7 +140,7 @@ def test_challenge_handler_raises_specific_exception_without_imap(
 def test_challenge_handler_returns_code_when_imap_works(
     monkeypatch: pytest.MonkeyPatch, tmp_db,
 ):
-    from src.plugins import challenge
+    from instagram_ai_agent.plugins import challenge
 
     monkeypatch.setattr(challenge, "fetch_email_code", lambda *a, **k: "123456")
     handler = challenge.make_challenge_code_handler()
@@ -151,7 +151,7 @@ def test_challenge_handler_returns_code_when_imap_works(
 def test_cookie_seed_returns_none_without_sessionid(monkeypatch: pytest.MonkeyPatch):
     """sessionid is the one required cookie — without it, we must fall
     through to password login rather than attempting a partial seed."""
-    from src.plugins import ig
+    from instagram_ai_agent.plugins import ig
     for k in ("IG_SESSIONID", "IG_DS_USER_ID", "IG_CSRFTOKEN", "IG_MID", "IG_DID",
               "IG_DATR", "IG_RUR", "IG_SHBID", "IG_SHBTS", "IG_NRCB"):
         monkeypatch.delenv(k, raising=False)
@@ -161,7 +161,7 @@ def test_cookie_seed_returns_none_without_sessionid(monkeypatch: pytest.MonkeyPa
 def test_cookie_seed_collects_every_cookie(monkeypatch: pytest.MonkeyPatch):
     """User-supplied cookies land in the seed under their IG names
     (not the env var names)."""
-    from src.plugins import ig
+    from instagram_ai_agent.plugins import ig
     cookie_map = {
         "IG_SESSIONID": "sess-xyz",
         "IG_DS_USER_ID": "12345",
@@ -194,7 +194,7 @@ def test_cookie_seed_collects_every_cookie(monkeypatch: pytest.MonkeyPatch):
 def test_cookie_seed_strips_empty_values(monkeypatch: pytest.MonkeyPatch):
     """A whitespace-only env var must be treated as absent — presence
     in seed is the signal for "use this cookie"."""
-    from src.plugins import ig
+    from instagram_ai_agent.plugins import ig
     monkeypatch.setenv("IG_SESSIONID", "real-sess")
     monkeypatch.setenv("IG_DS_USER_ID", "")
     monkeypatch.setenv("IG_CSRFTOKEN", "   ")
@@ -209,7 +209,7 @@ def test_has_full_cookie_set_requires_three_minimum(monkeypatch: pytest.MonkeyPa
     """Full-set path (set_settings, no /login) needs sessionid +
     ds_user_id + csrftoken at minimum. Anything less falls back to
     login_by_sessionid."""
-    from src.plugins import ig
+    from instagram_ai_agent.plugins import ig
     assert ig._has_full_cookie_set({"sessionid": "s"}) is False
     assert ig._has_full_cookie_set({"sessionid": "s", "ds_user_id": "u"}) is False
     assert ig._has_full_cookie_set({
@@ -223,13 +223,13 @@ def test_session_refresh_days_default_is_zero(monkeypatch: pytest.MonkeyPatch):
     """Research-driven fix: every relogin() is a high-suspicion event
     for IG's 2026 risk models. Default must be 0 (disabled) — NOT the
     old 7 from 2022-era advice."""
-    from src.plugins import ig
+    from instagram_ai_agent.plugins import ig
     monkeypatch.delenv("IG_SESSION_REFRESH_DAYS", raising=False)
     assert ig._session_refresh_days() == 0
 
 
 def test_session_refresh_days_honours_override(monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import ig
+    from instagram_ai_agent.plugins import ig
     monkeypatch.setenv("IG_SESSION_REFRESH_DAYS", "30")
     assert ig._session_refresh_days() == 30
     monkeypatch.setenv("IG_SESSION_REFRESH_DAYS", "bogus")
@@ -239,7 +239,7 @@ def test_session_refresh_days_honours_override(monkeypatch: pytest.MonkeyPatch):
 def test_cookie_seed_accepts_supplementary_cookies(monkeypatch: pytest.MonkeyPatch):
     """2026-research expansion: support ps_l/ps_n (Accounts Center),
     wd/dpr/ig_lang (continuity hints), fbm_<appid> (FB SSO)."""
-    from src.plugins import ig
+    from instagram_ai_agent.plugins import ig
     for k in (
         "IG_SESSIONID", "IG_PS_L", "IG_PS_N", "IG_WD", "IG_DPR",
         "IG_IG_LANG", "IG_MCD", "IG_CCODE", "IG_FBM_APPID",
@@ -259,7 +259,7 @@ def test_cookie_seed_accepts_supplementary_cookies(monkeypatch: pytest.MonkeyPat
 
 
 def test_tls_impersonation_profile_disabled_via_env(monkeypatch: pytest.MonkeyPatch):
-    from src.plugins import ig
+    from instagram_ai_agent.plugins import ig
     for off_val in ("off", "OFF", "0", "false", "no"):
         monkeypatch.setenv("IG_TLS_IMPERSONATE", off_val)
         assert ig._tls_impersonation_profile() is None
@@ -268,7 +268,7 @@ def test_tls_impersonation_profile_disabled_via_env(monkeypatch: pytest.MonkeyPa
 def test_tls_impersonation_profile_noop_without_curl_cffi(monkeypatch: pytest.MonkeyPatch):
     """curl_cffi isn't in base deps — profile() must return None,
     NOT raise, so the IGClient stays on plain requests.Session."""
-    from src.plugins import ig
+    from instagram_ai_agent.plugins import ig
     monkeypatch.delenv("IG_TLS_IMPERSONATE", raising=False)
     # curl_cffi is not installed in test env
     assert ig._tls_impersonation_profile() is None
@@ -277,8 +277,8 @@ def test_tls_impersonation_profile_noop_without_curl_cffi(monkeypatch: pytest.Mo
 def test_warmup_skip_env_bypasses_ramp(monkeypatch: pytest.MonkeyPatch):
     """Audit fix B1: IG_SKIP_WARMUP=1 must bypass the warmup ramp so
     established accounts can post immediately."""
-    from src.core import config as cfg_mod
-    from src.core import warmup
+    from instagram_ai_agent.core import config as cfg_mod
+    from instagram_ai_agent.core import warmup
 
     monkeypatch.setenv("IG_SKIP_WARMUP", "1")
     cfg = cfg_mod.NicheConfig(
@@ -297,7 +297,7 @@ def test_warmup_skip_env_bypasses_ramp(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.parametrize("off_value", ["", "0", "false", "no"])
 def test_warmup_skip_requires_explicit_opt_in(monkeypatch, off_value):
-    from src.core import warmup
+    from instagram_ai_agent.core import warmup
     monkeypatch.setenv("IG_SKIP_WARMUP", off_value)
     assert warmup._skip_warmup() is False
 
@@ -305,8 +305,8 @@ def test_warmup_skip_requires_explicit_opt_in(monkeypatch, off_value):
 def test_drain_query_bypasses_scheduled_for(tmp_path, monkeypatch):
     """Audit fix B2: content_next_to_drain must return items whose
     scheduled_for is in the future — drain is an explicit "post NOW"."""
-    from src.core import config as cfg_mod
-    from src.core import db as db_mod
+    from instagram_ai_agent.core import config as cfg_mod
+    from instagram_ai_agent.core import db as db_mod
     fresh = tmp_path / "brain.db"
     monkeypatch.setattr(cfg_mod, "DB_PATH", fresh)
     monkeypatch.setattr(db_mod, "DB_PATH", fresh)
@@ -336,8 +336,8 @@ def test_drain_query_bypasses_scheduled_for(tmp_path, monkeypatch):
 
 
 def test_session_health_table_exists(tmp_path, monkeypatch):
-    from src.core import db as db_mod
-    from src.core import config as cfg_mod
+    from instagram_ai_agent.core import db as db_mod
+    from instagram_ai_agent.core import config as cfg_mod
     fresh = tmp_path / "brain.db"
     monkeypatch.setattr(cfg_mod, "DB_PATH", fresh)
     monkeypatch.setattr(db_mod, "DB_PATH", fresh)
@@ -353,7 +353,7 @@ def test_session_health_table_exists(tmp_path, monkeypatch):
 def test_default_user_agent_matches_device(monkeypatch: pytest.MonkeyPatch):
     """UA string must embed the device fingerprint values we claim, so
     cookie-based sessions have internally-consistent device claims."""
-    from src.plugins import ig
+    from instagram_ai_agent.plugins import ig
     device = {
         "app_version": "999.9.9.9", "android_version": 30,
         "android_release": "11", "dpi": "420dpi",
@@ -378,7 +378,7 @@ def test_feed_formats_includes_story_carousel():
 def test_idea_bank_seed_from_file_is_idempotent(tmp_db):
     """Calling it twice must not double-insert. Init wizard calls it
     once — re-running init shouldn't create duplicates."""
-    from src.brain import idea_bank
+    from instagram_ai_agent.brain import idea_bank
     n1 = idea_bank.seed_from_file()
     n2 = idea_bank.seed_from_file()
     assert n1 > 0

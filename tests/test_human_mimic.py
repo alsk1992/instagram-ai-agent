@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.core import config as cfg_mod
-from src.core import db
-from src.plugins import human_mimic
+from instagram_ai_agent.core import config as cfg_mod
+from instagram_ai_agent.core import db
+from instagram_ai_agent.plugins import human_mimic
 
 
 def _mkcfg(**kwargs):
