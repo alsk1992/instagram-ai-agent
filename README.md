@@ -6,6 +6,11 @@
 
 Describe your niche once. It mines trends, generates reels + carousels + memes, writes captions, posts on your schedule, replies to comments, and keeps itself out of shadowbans. Single process. Free tier by default. Commercial-safe.
 
+https://github.com/alsk1992/instagram-ai-agent/raw/main/docs/media/walkthrough.mp4
+
+[📹 90-second walkthrough](docs/media/walkthrough.mp4) &nbsp;·&nbsp;
+[🖼️ dashboard preview](docs/screenshots/dashboard-home.png)
+
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-671%20passing-brightgreen)](tests/)
@@ -230,6 +235,11 @@ Full research notes + sources in the [safety deep-dive](#%EF%B8%8F-safety--anti-
 
 Everything lives in two files: `niche.yaml` (the spine) and `.env` (credentials).
 
+The setup wizard picks a starter preset so you don't invent defaults:
+
+<p align="center"><img src="docs/media/presets.svg" alt="starter niche presets" width="900"></p>
+<p align="center"><img src="docs/media/wizard-preview.svg" alt="init wizard" width="900"></p>
+
 ### `niche.yaml` — the spine
 
 ```yaml
@@ -352,6 +362,8 @@ If you hit a wall, run:
 ```bash
 ig-agent doctor
 ```
+
+<p align="center"><img src="docs/media/doctor.svg" alt="ig-agent doctor output" width="900"></p>
 
 It walks every dependency + config step with clear pass/warn/fail rows and a concrete action for anything broken. Cover 80% of "why isn't this working" questions in 3 seconds.
 
