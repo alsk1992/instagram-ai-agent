@@ -8,7 +8,9 @@ Describe your niche once. It mines trends, generates reels + carousels + memes, 
 
 
 
-<video src="https://github.com/alsk1992/instagram-ai-agent/releases/download/walkthrough-v1/walkthrough.mp4" controls muted playsinline width="720"></video>
+<a href="https://github.com/alsk1992/instagram-ai-agent/releases/download/walkthrough-v1/walkthrough.mp4">
+  <img src="docs/media/walkthrough-poster.jpg" alt="Click to play the 43-second walkthrough (MP4 with audio)" width="720">
+</a>
 
 _43-second walkthrough — real `ig-agent doctor`, `status`, `warmup-status` runs + real dashboard navigation, narrated by [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0, CPU)._
 
