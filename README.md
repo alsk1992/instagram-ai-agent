@@ -325,6 +325,32 @@ Every feature has tests. The suite is the contract.
 
 ---
 
+## 🆘 Troubleshooting — "it's not working"
+
+If you hit a wall, run:
+
+```bash
+ig-agent doctor
+```
+
+It walks every dependency + config step with clear pass/warn/fail rows and a concrete action for anything broken. Cover 80% of "why isn't this working" questions in 3 seconds.
+
+### Common first-run issues
+
+| Symptom | Usually means | Fix |
+|---|---|---|
+| `ig-agent drain` returns "drained 0/1" | Warmup is blocking posts for 7 days on a fresh account | Set `IG_SKIP_WARMUP=1` in `.env` if your account already has post history; otherwise wait until day 8. |
+| `Login failed: bad_password` | Actually, IG usually returns this on first login from a new IP even with correct credentials | Add a residential proxy (`IG_PROXY=http://...`); or paste `IG_SESSIONID` cookie from browser — see [Safety](#%EF%B8%8F-safety--anti-detection) |
+| `No module named 'playwright'` | install.sh was interrupted or ran outside the venv | `source .venv/bin/activate && pip install -e .` |
+| `ffmpeg: not found` | System package missing | macOS: `brew install ffmpeg` · Ubuntu: `sudo apt install ffmpeg` · Arch: `pacman -S ffmpeg` |
+| Terminal looks frozen during `generate` | LLM calls take 10–30s each | Watch the log — `tail -f logs/orchestrator.log` — genuinely working, just slow |
+| Dashboard shows "connection refused" | It binds to `127.0.0.1:8080` on the VPS | SSH-tunnel: `ssh -L 8080:127.0.0.1:8080 you@vps` then open `http://127.0.0.1:8080` locally |
+| Asks for "email-code" challenge at login | IG security on new IPs | Either set `IMAP_HOST/USER/PASS` so the agent auto-reads the code, OR run `ig-agent login` in an interactive terminal and paste it manually |
+
+### Starting from zero
+
+Never used a terminal / Python / GitHub? Honest advice: **pair with a technical friend for the first 30 minutes.** The install is one line but the concepts (API keys, proxies, sessions, cookies) are a lot to absorb solo. Once setup is done the agent runs itself — you just need to get it over the initial hump.
+
 ## ❓ FAQ
 
 **Q: How much does this cost to run?**

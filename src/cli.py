@@ -90,34 +90,72 @@ def init(
 
     console.rule("[bold]ig-agent setup")
 
+    # Preset picker — saves users from inventing palette/voice/hashtags
+    # from scratch. Pick a preset → wizard fills reasonable defaults
+    # → they only need to edit what's specific to their page.
+    from src.niche_presets import PRESETS, by_key
+
+    console.print(
+        "[dim]Pick a starter preset. Every field is editable below — "
+        "this just saves you from inventing defaults.[/dim]"
+    )
+    preset_choices = [f"{p.key} — {p.label}" for p in PRESETS] + ["custom (blank defaults)"]
+    preset_label = questionary.select("Starter preset:", choices=preset_choices).ask()
+    if preset_label is None:
+        raise typer.Exit(1)
+    preset_key = preset_label.split(" — ")[0] if "—" in preset_label else None
+    preset = by_key(preset_key) if preset_key else None
+
+    default_niche = preset.niche if preset else ""
+    default_subs = ", ".join(preset.sub_topics) if preset else ""
+    default_audience = preset.target_audience if preset else ""
+    default_persona = preset.persona if preset else ""
+    default_tone = ", ".join(preset.voice_tone) if preset else "direct"
+    default_forbidden = ", ".join(preset.voice_forbidden) if preset else ""
+    default_palette = ", ".join(preset.palette) if preset else "#0a0a0a, #f5f5f0, #c9a961"
+    default_core_tags = ", ".join(preset.core_hashtags) if preset else ""
+    default_growth_tags = ", ".join(preset.growth_hashtags) if preset else ""
+    default_hours = ", ".join(str(h) for h in (preset.best_hours_utc if preset else [14, 18, 21]))
+
     niche = questionary.text(
         "Niche (what this page is about):",
+        default=default_niche,
         validate=lambda x: len(x.strip()) >= 3 or "Minimum 3 chars",
     ).ask()
     if niche is None:
         raise typer.Exit(1)
     sub_topics = _split(
-        questionary.text("Sub-topics (comma-separated):").ask() or ""
+        questionary.text("Sub-topics (comma-separated):", default=default_subs).ask() or ""
     )
     if not sub_topics:
         sub_topics = [niche.strip()]
     audience = questionary.text(
         "Target audience (who it's for):",
+        default=default_audience,
         validate=lambda x: len(x.strip()) >= 5 or "Minimum 5 chars",
     ).ask()
-    commercial = questionary.confirm("Commercial use (monetising the page)?", default=True).ask()
+    commercial = questionary.confirm(
+        "Are you monetising this page? (affects licence gates)",
+        default=True,
+    ).ask()
 
     console.rule("[bold]voice")
+    console.print("[dim]How should the AI sound? You can always tweak niche.yaml later.[/dim]")
     tone = _split(
         questionary.text(
-            "Voice tone (comma-separated, e.g. direct, dry humour, no-nonsense):"
+            "Voice tone (comma-separated, e.g. direct, dry humour):",
+            default=default_tone,
         ).ask() or "direct"
     ) or ["direct"]
     forbidden = _split(
-        questionary.text("Things to NEVER say (comma-separated, optional):").ask() or ""
+        questionary.text(
+            "Words/phrases to NEVER use (comma-separated, optional):",
+            default=default_forbidden,
+        ).ask() or ""
     )
     persona = questionary.text(
-        "One-sentence persona (who writes these posts?):",
+        "One-sentence persona (who's writing these posts?):",
+        default=default_persona,
         validate=lambda x: len(x.strip()) >= 10 or "Give a proper sentence",
     ).ask()
     cta_styles = _split(
@@ -130,7 +168,7 @@ def init(
     console.rule("[bold]aesthetic")
     palette_input = questionary.text(
         "Palette (3–5 hex colours, comma-separated):",
-        default="#0a0a0a, #f5f5f0, #c9a961",
+        default=default_palette,
     ).ask() or ""
     palette = _split(palette_input) or ["#0a0a0a", "#f5f5f0", "#c9a961"]
     heading_font = questionary.text("Heading font family:", default="Archivo Black").ask() or "Archivo Black"
@@ -144,9 +182,17 @@ def init(
 
     console.rule("[bold]hashtags")
     core = _split(
-        questionary.text("Core hashtags (comma-separated, min 3):").ask() or ""
+        questionary.text(
+            "Core hashtags (comma-separated, min 3):",
+            default=default_core_tags,
+        ).ask() or ""
     )
-    growth = _split(questionary.text("Growth hashtags (comma-separated, optional):").ask() or "")
+    growth = _split(
+        questionary.text(
+            "Growth hashtags (comma-separated, optional):",
+            default=default_growth_tags,
+        ).ask() or ""
+    )
     long_tail = _split(questionary.text("Long-tail hashtags (comma-separated, optional):").ask() or "")
     per_post = int(
         questionary.text("Hashtags per post (3–30):", default="15", validate=_is_int_in(3, 30)).ask()
@@ -243,8 +289,9 @@ def init(
         questionary.text("Stories per day (0–20):", default="3", validate=_is_int_in(0, 20)).ask()
     )
     hours_raw = questionary.text(
-        "Best hours UTC (comma-separated, e.g. 14, 18, 21):", default="14, 18, 21"
-    ).ask() or "14,18,21"
+        "Best hours UTC (comma-separated, e.g. 14, 18, 21):",
+        default=default_hours,
+    ).ask() or default_hours
     best_hours = sorted({int(h) for h in _split(hours_raw) if h.isdigit() and 0 <= int(h) < 24})
 
     console.rule("[bold]brain")
@@ -934,6 +981,152 @@ def hashtag_review() -> None:
     if approved:
         n = hashtag_discovery.approve_into_growth(cfg, approved)
         console.print(f"[green]Merged {n} tags into growth pool (niche.yaml updated).[/green]")
+
+
+@app.command("doctor")
+def doctor() -> None:
+    """Diagnostic self-check — walks through every dependency + config
+    step a new user might have skipped or misconfigured. Prints a
+    checklist with concrete next-actions for anything failing.
+
+    Run this BEFORE asking for help. 80% of 'why isn't it working'
+    questions surface a yellow/red row here."""
+    import importlib
+    import shutil as _shutil
+
+    load_env()
+    results: list[tuple[str, str, str]] = []   # (status, label, hint)
+
+    def ok(label: str, hint: str = "") -> None:
+        results.append(("✅", label, hint))
+
+    def warn(label: str, hint: str) -> None:
+        results.append(("⚠️", label, hint))
+
+    def fail(label: str, hint: str) -> None:
+        results.append(("❌", label, hint))
+
+    # Python version
+    import sys as _sys
+    v = _sys.version_info
+    if v >= (3, 11):
+        ok(f"Python {v.major}.{v.minor}")
+    else:
+        fail(f"Python {v.major}.{v.minor}", "3.11+ required — upgrade Python.")
+
+    # ffmpeg
+    if _shutil.which("ffmpeg") and _shutil.which("ffprobe"):
+        ok("ffmpeg + ffprobe on PATH")
+    else:
+        fail("ffmpeg/ffprobe missing",
+             "brew install ffmpeg  /  sudo apt install ffmpeg")
+
+    # Playwright chromium
+    try:
+        from playwright.sync_api import sync_playwright as _spw
+        with _spw() as p:
+            try:
+                br = p.chromium.launch(args=["--no-sandbox"])
+                br.close()
+                ok("Playwright chromium installed")
+            except Exception as e:
+                fail("Playwright chromium missing/broken",
+                     f"Run: python -m playwright install chromium  ({e})")
+    except Exception as e:
+        fail("Playwright lib missing", f"pip install -e . ({e})")
+
+    # Fonts present
+    from src.core.config import FONTS_DIR
+    tt = list(FONTS_DIR.glob("*.ttf")) if FONTS_DIR.exists() else []
+    if tt:
+        ok(f"Fonts: {len(tt)} TTF file(s) in {FONTS_DIR}")
+    else:
+        warn("No fonts in data/fonts/",
+             "Re-run ./install.sh or download Archivo Black + Inter manually.")
+
+    # LLM provider
+    providers = providers_configured()
+    if providers:
+        ok(f"LLM provider(s): {', '.join(providers)}")
+    else:
+        fail("No LLM provider key set",
+             "Add OPENROUTER_API_KEY to .env (free at https://openrouter.ai/keys)")
+
+    # IG creds
+    if os.environ.get("IG_USERNAME") and os.environ.get("IG_PASSWORD"):
+        ok(f"IG creds set for user {os.environ['IG_USERNAME']}")
+    else:
+        fail("IG_USERNAME / IG_PASSWORD missing",
+             "Fill them in .env (or run `ig-agent init` to use the wizard)")
+
+    # niche.yaml
+    try:
+        _cfg = load_niche()
+        ok(f"niche.yaml valid (niche: {_cfg.niche!r})")
+    except FileNotFoundError:
+        fail("niche.yaml not found", "Run `ig-agent init`.")
+    except Exception as e:
+        fail("niche.yaml invalid", f"{e}")
+
+    # Idea bank
+    try:
+        db.init_db()
+        from src.brain import idea_bank as _ib
+        n_ideas = _ib.count()
+        if n_ideas > 0:
+            ok(f"Idea bank seeded ({n_ideas} archetypes)")
+        else:
+            warn("Idea bank empty", "Run `ig-agent seed-idea-bank`")
+    except Exception as e:
+        warn("Couldn't count ideas", str(e))
+
+    # Optional extras
+    for label, mod, extra in (
+        ("TLS impersonation (curl_cffi)", "curl_cffi", "[tls]"),
+        ("Reddit harvester (praw)", "praw", "[reddit]"),
+        ("Niche RAG embeddings", "sentence_transformers", "[rag]"),
+        ("Finish pass (Real-ESRGAN)", "realesrgan", "[finish]"),
+        ("Beat-sync reels (librosa)", "librosa", "[beat]"),
+    ):
+        try:
+            importlib.import_module(mod)
+            ok(f"{label} installed")
+        except Exception:
+            warn(f"{label} not installed", f"Optional — install via `pip install '.{extra}'`")
+
+    # Device fingerprint
+    from src.core.config import DEVICE_PATH
+    if DEVICE_PATH.exists():
+        ok(f"Device fingerprint: {DEVICE_PATH}")
+    else:
+        warn("Device fingerprint not yet generated",
+             "Created automatically on first `ig-agent login`.")
+
+    # ComfyUI
+    if os.environ.get("COMFYUI_URL"):
+        ok(f"ComfyUI URL set: {os.environ['COMFYUI_URL']}")
+    else:
+        warn("COMFYUI_URL not set (optional)",
+             "Falls back to Pollinations Flux cloud generation.")
+
+    # Render
+    console.rule("[bold]ig-agent doctor")
+    t = Table(show_lines=False)
+    t.add_column("", no_wrap=True)
+    t.add_column("check")
+    t.add_column("hint", style="dim")
+    for status, label, hint in results:
+        t.add_row(status, label, hint)
+    console.print(t)
+
+    fails = sum(1 for r in results if r[0] == "❌")
+    warns = sum(1 for r in results if r[0] == "⚠️")
+    if fails:
+        console.print(f"\n[red]{fails} blocker(s)[/red] — fix these before `ig-agent run`.")
+    elif warns:
+        console.print(f"\n[yellow]{warns} warning(s)[/yellow] — optional, won't stop core posting.")
+    else:
+        console.print("\n[green]All checks passed — you're ready to run.[/green]")
 
 
 @app.command("show-niche")
