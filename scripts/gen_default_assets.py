@@ -24,11 +24,40 @@ ACCENT = (201, 169, 97)
 
 
 def _font(size: int):
-    """Best-effort font fetch — returns PIL default if no system font found."""
+    """Best-effort font fetch. Priority:
+
+      1. data/fonts/ (installer downloads Archivo Black + Inter here)
+      2. system DejaVu / Liberation / Arial fallbacks
+      3. PIL default bitmap (tiny, ugly — last resort)
+    """
+    # 1. data/fonts/ — picks up the Google Fonts the installer downloads
+    if FONTS.exists():
+        for candidate in (
+            "Archivo Black.ttf",
+            "Inter.ttf",
+            "ArchivoBlack-Regular.ttf",
+        ):
+            p = FONTS / candidate
+            if p.exists():
+                try:
+                    return ImageFont.truetype(str(p), size)
+                except OSError:
+                    pass
+        # Any .ttf / .otf under data/fonts/
+        for p in FONTS.iterdir():
+            if p.suffix.lower() in (".ttf", ".otf") and p.is_file():
+                try:
+                    return ImageFont.truetype(str(p), size)
+                except OSError:
+                    pass
+
+    # 2. System fallbacks
     for f in (
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         "/Library/Fonts/Arial Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",  # macOS 10.15+
+        "C:\\Windows\\Fonts\\arialbd.ttf",                    # Windows
     ):
         if Path(f).exists():
             return ImageFont.truetype(f, size)

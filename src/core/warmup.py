@@ -8,9 +8,15 @@ Day 15+   : full budgets.
 
 The agent's first login writes ``warmup_start`` to the state K/V. From then on
 every budget check consults :func:`effective_caps` which scales every action.
+
+**Escape hatch:** Set ``IG_SKIP_WARMUP=1`` to bypass the ramp entirely (for
+established accounts that already have post history + engagement, or for
+CLI one-shot posts via ``ig-agent drain``). The wizard's ``commercial=True``
+users typically want this disabled; fresh accounts shouldn't.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
@@ -85,6 +91,12 @@ class EffectiveBudget:
     phase_label: str
 
 
+def _skip_warmup() -> bool:
+    """True when the user has explicitly opted out of the warmup ramp."""
+    val = os.environ.get("IG_SKIP_WARMUP", "").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
 def effective_caps(cfg: NicheConfig) -> EffectiveBudget:
     """Return the current scaled caps. During warmup, budgets shrink & some actions disable."""
     raw_caps = {
@@ -97,6 +109,17 @@ def effective_caps(cfg: NicheConfig) -> EffectiveBudget:
         "post": cfg.schedule.posts_per_day,
         "story_post": cfg.schedule.stories_per_day,
     }
+    # User-opt-out path: established accounts that already have post
+    # history don't need the cold-start ramp.
+    if _skip_warmup():
+        return EffectiveBudget(
+            caps=raw_caps,
+            allow_posts=True,
+            allow_dms=True,
+            multiplier=1.0,
+            day=None,
+            phase_label="skipped",
+        )
     phase = current_phase()
     day = current_day()
     if phase is None:

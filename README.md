@@ -42,6 +42,8 @@ ig-agent run               # 6. start the full agent — long-running
 Prefer `make`? `make install && make init && make login && make run`.
 
 > **First-time user?** Jump to the [Safety section](#%EF%B8%8F-safety--anti-detection) before step 2 — pasting browser cookies in `.env` avoids IG's email-code challenge on fresh VPS installs.
+>
+> **Account already has post history?** Set `IG_SKIP_WARMUP=1` in `.env`. Otherwise the 14-day warmup ramp blocks ALL posts for the first 7 days on fresh accounts (by design — this is the single biggest ban-avoidance lever). A brand-new account should leave it on and not touch posts until day 8.
 
 ---
 

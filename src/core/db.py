@@ -421,6 +421,32 @@ def content_next_to_post() -> dict[str, Any] | None:
     return _row_to_content(row) if row else None
 
 
+def content_next_to_drain() -> dict[str, Any] | None:
+    """Drain picks ANY approved item regardless of scheduled_for — the
+    user explicitly asked for an immediate post, so bypass the best-
+    hours slot filter.
+
+    Also clears scheduled_for on the picked row so the poster doesn't
+    re-enqueue it in the next scheduling pass."""
+    row = get_conn().execute(
+        """
+        SELECT * FROM content_queue
+        WHERE status='approved'
+        ORDER BY COALESCE(scheduled_for, created_at) ASC
+        LIMIT 1
+        """
+    ).fetchone()
+    if row is None:
+        return None
+    # Strip the scheduled_for on the in-flight item so subsequent
+    # schedule_approved_items doesn't re-slot it after posting.
+    get_conn().execute(
+        "UPDATE content_queue SET scheduled_for=NULL WHERE id=?",
+        (int(row["id"]),),
+    )
+    return _row_to_content(row)
+
+
 def content_get(cid: int) -> dict[str, Any] | None:
     row = get_conn().execute("SELECT * FROM content_queue WHERE id=?", (cid,)).fetchone()
     return _row_to_content(row) if row else None

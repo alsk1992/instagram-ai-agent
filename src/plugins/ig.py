@@ -251,8 +251,8 @@ class IGClient:
         # `ig-agent login` directly) we enable interactive code entry
         # so a first-time setup doesn't dead-end in a 24h cooldown.
         import sys as _sys
-        _interactive = _sys.stdin.isatty() and _sys.stdout.isatty()
-        self.cl.challenge_code_handler = ch.make_challenge_code_handler(interactive=_interactive)
+        self._interactive = _sys.stdin.isatty() and _sys.stdout.isatty()
+        self.cl.challenge_code_handler = ch.make_challenge_code_handler(interactive=self._interactive)
         self.cl.totp_code_handler = ch.make_totp_handler()
 
         # Random but human-ish request delays
@@ -367,7 +367,7 @@ class IGClient:
             log.warning("Session invalid; relogging in clean")
             self.cl = Client()
             dev.apply_to(self.cl)
-            self.cl.challenge_code_handler = ch.make_challenge_code_handler()
+            self.cl.challenge_code_handler = ch.make_challenge_code_handler(interactive=self._interactive)
             self.cl.totp_code_handler = ch.make_totp_handler()
             if os.environ.get("IG_PROXY"):
                 self.cl.set_proxy(os.environ["IG_PROXY"])
@@ -873,7 +873,7 @@ class IGClient:
             dev.apply_to(new_cl)
             if os.environ.get("IG_PROXY"):
                 new_cl.set_proxy(os.environ["IG_PROXY"])
-            new_cl.challenge_code_handler = ch.make_challenge_code_handler()
+            new_cl.challenge_code_handler = ch.make_challenge_code_handler(interactive=self._interactive)
             new_cl.totp_code_handler = ch.make_totp_handler()
             new_cl.delay_range = [2, 6]
             if self.session_path.exists():

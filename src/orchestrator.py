@@ -493,7 +493,34 @@ class Orchestrator:
         # Kick Reddit harvester so first-boot context isn't dry for 45 min
         if self.cfg.reddit_enabled and self.cfg.reddit_subs:
             asyncio.create_task(self.job_reddit())
+        # First-post readiness kicks — chain generate → schedule → post
+        # so a brand-new orchestrator produces + slots + posts within
+        # minutes instead of an hour. Silently no-ops when caps/queue
+        # don't allow any action. Staggered so they don't collide.
+        asyncio.create_task(self._first_post_kick())
         await self._stop.wait()
+
+    async def _first_post_kick(self) -> None:
+        """Chain generate → schedule → post on startup so we don't
+        burn the first 50 min idle. All three steps are idempotent +
+        budget-gated; the chain just shortens the cold-start window.
+        """
+        # Short stagger so the full startup log tail is readable.
+        await asyncio.sleep(5)
+        try:
+            await self.job_generate()
+        except Exception:
+            log.exception("first_post_kick: job_generate failed")
+        await asyncio.sleep(3)
+        try:
+            await self.job_schedule_approved()
+        except Exception:
+            log.exception("first_post_kick: job_schedule_approved failed")
+        await asyncio.sleep(3)
+        try:
+            await self.job_post()
+        except Exception:
+            log.exception("first_post_kick: job_post failed")
 
     def request_stop(self) -> None:
         self._stop.set()

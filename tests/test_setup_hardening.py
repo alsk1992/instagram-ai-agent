@@ -274,6 +274,67 @@ def test_tls_impersonation_profile_noop_without_curl_cffi(monkeypatch: pytest.Mo
     assert ig._tls_impersonation_profile() is None
 
 
+def test_warmup_skip_env_bypasses_ramp(monkeypatch: pytest.MonkeyPatch):
+    """Audit fix B1: IG_SKIP_WARMUP=1 must bypass the warmup ramp so
+    established accounts can post immediately."""
+    from src.core import config as cfg_mod
+    from src.core import warmup
+
+    monkeypatch.setenv("IG_SKIP_WARMUP", "1")
+    cfg = cfg_mod.NicheConfig(
+        niche="test", sub_topics=["t"], target_audience="test users",
+        commercial=True,
+        voice=cfg_mod.Voice(tone=["direct"], forbidden=[], persona="test persona for warmup."),
+        aesthetic=cfg_mod.Aesthetic(palette=["#000", "#fff", "#c9a961"]),
+        hashtags=cfg_mod.HashtagPools(core=["a", "b", "c"]),
+    )
+    caps = warmup.effective_caps(cfg)
+    assert caps.phase_label == "skipped"
+    assert caps.allow_posts is True
+    # Post cap is the raw config value, not 0
+    assert caps.caps["post"] == cfg.schedule.posts_per_day
+
+
+@pytest.mark.parametrize("off_value", ["", "0", "false", "no"])
+def test_warmup_skip_requires_explicit_opt_in(monkeypatch, off_value):
+    from src.core import warmup
+    monkeypatch.setenv("IG_SKIP_WARMUP", off_value)
+    assert warmup._skip_warmup() is False
+
+
+def test_drain_query_bypasses_scheduled_for(tmp_path, monkeypatch):
+    """Audit fix B2: content_next_to_drain must return items whose
+    scheduled_for is in the future — drain is an explicit "post NOW"."""
+    from src.core import config as cfg_mod
+    from src.core import db as db_mod
+    fresh = tmp_path / "brain.db"
+    monkeypatch.setattr(cfg_mod, "DB_PATH", fresh)
+    monkeypatch.setattr(db_mod, "DB_PATH", fresh)
+    db_mod.close()
+    db_mod.init_db()
+
+    cid = db_mod.content_enqueue(
+        format="meme", caption="x", hashtags=[], media_paths=["/tmp/x.jpg"],
+        phash=None, critic_score=None, critic_notes=None, generator="test",
+        status="approved",
+    )
+    # Slot it 6 hours into the future
+    from datetime import datetime, timedelta, timezone
+    future = (datetime.now(timezone.utc) + timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    db_mod.content_schedule(cid, future)
+
+    # Normal post_next filter skips it
+    assert db_mod.content_next_to_post() is None
+    # Drain picks it regardless
+    item = db_mod.content_next_to_drain()
+    assert item is not None
+    assert int(item["id"]) == cid
+    # scheduled_for was cleared so the next scheduling pass doesn't re-slot
+    row = db_mod.content_get(cid)
+    assert row["scheduled_for"] is None
+    db_mod.close()
+
+
 def test_session_health_table_exists(tmp_path, monkeypatch):
     from src.core import db as db_mod
     from src.core import config as cfg_mod

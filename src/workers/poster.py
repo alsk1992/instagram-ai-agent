@@ -63,16 +63,45 @@ def _dispatch_upload(cl: IGClient, item: dict) -> str:
     raise ValueError(f"Unknown format for upload: {fmt}")
 
 
-async def post_next(cfg: NicheConfig, ig: IGClient | None = None) -> int | None:
+async def post_next(
+    cfg: NicheConfig,
+    ig: IGClient | None = None,
+    *,
+    drain: bool = False,
+) -> int | None:
+    """Post the next queued item.
+
+    When ``drain=True``, bypasses the ``scheduled_for`` best-hours
+    filter — the caller is explicitly asking for an immediate post.
+    Used by ``ig-agent drain`` for first-post-proof on fresh installs.
+    """
     ok, used, cap = allowed("post", cfg)
     if not ok:
-        log.info("post budget exhausted (%d/%d) — skipping", used, cap)
+        # Surface the actual cause loudly — the default is "warmup blocks
+        # posts for 7 days" which silently left users confused on first
+        # run. Tell them about the IG_SKIP_WARMUP escape hatch.
+        from src.core.warmup import current_phase, current_day
+        phase = current_phase()
+        day = current_day()
+        if cap == 0 and phase is not None and not phase.allow_posts:
+            log.warning(
+                "post blocked by warmup — day %d/%d (%s phase). "
+                "Fresh accounts get ZERO posts for the first 7 days to avoid "
+                "ban patterns. Set IG_SKIP_WARMUP=1 in .env if this account "
+                "is established + has real post history already.",
+                day or 0, 14, phase.label,
+            )
+        else:
+            log.info("post budget exhausted (%d/%d) — skipping", used, cap)
         return None
 
-    item = db.content_next_to_post()
+    if drain:
+        item = db.content_next_to_drain()
+    else:
+        item = db.content_next_to_post()
     if not item or item["format"] in STORY_FORMATS:
         # Story items are handled by story_poster — re-query for feed-only
-        item = _next_feed_item()
+        item = _next_feed_item(drain=drain)
     if not item:
         return None
 
@@ -224,21 +253,36 @@ async def _post_first_comment(
     log.info("first-comment hashtag drop ok (%d chars) on %s", len(comment_text), media_pk)
 
 
-def _next_feed_item() -> dict | None:
+def _next_feed_item(drain: bool = False) -> dict | None:
     conn = db.get_conn()
     qs = ",".join("?" * len(FEED_FORMATS))
-    row = conn.execute(
-        f"""
+    if drain:
+        sql = f"""
+        SELECT * FROM content_queue
+        WHERE status='approved'
+          AND format IN ({qs})
+        ORDER BY COALESCE(scheduled_for, created_at) ASC
+        LIMIT 1
+        """
+    else:
+        sql = f"""
         SELECT * FROM content_queue
         WHERE status='approved'
           AND format IN ({qs})
           AND (scheduled_for IS NULL OR scheduled_for <= strftime('%Y-%m-%dT%H:%M:%SZ','now'))
         ORDER BY COALESCE(scheduled_for, created_at) ASC
         LIMIT 1
-        """,
-        tuple(FEED_FORMATS),
-    ).fetchone()
-    return db._row_to_content(row) if row else None
+        """
+    row = conn.execute(sql, tuple(FEED_FORMATS)).fetchone()
+    if row is None:
+        return None
+    if drain:
+        # Clear the slot so the scheduler doesn't double-book after post
+        conn.execute(
+            "UPDATE content_queue SET scheduled_for=NULL WHERE id=?",
+            (int(row["id"]),),
+        )
+    return db._row_to_content(row)
 
 
 def schedule_approved_items(cfg: NicheConfig) -> int:

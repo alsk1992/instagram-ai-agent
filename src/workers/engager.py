@@ -33,6 +33,11 @@ def _execute(cl: IGClient, row: dict) -> tuple[str, str | None]:
         text = payload.get("text", "")
         if not (pk and text):
             return "failed", "missing media_pk or text"
+        # Respect the post-cooldown window so engager comments on
+        # OTHER users' posts don't fire in the silent window after our
+        # own upload. IGClient.comment skips the gate (needed for the
+        # first-comment-hashtag drop); we enforce it here instead.
+        cl._ensure_post_cooldown_clear()
         cid = cl.comment(str(pk), text)
         return "ok", cid
     if action == "story_view":

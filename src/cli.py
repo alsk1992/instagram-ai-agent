@@ -515,10 +515,24 @@ def review() -> None:
     load_env()
     db.init_db()
     cfg = _require_niche()
-    items = db.content_list(status="pending_review", limit=50)
+
+    # Non-TTY guard — questionary hangs forever when stdin isn't a
+    # terminal (e.g. `ig-agent review` over SSH without -t). Fall
+    # back to a status summary + pointer at the dashboard.
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        console.print("[yellow]ig-agent review needs an interactive terminal.[/yellow]")
+        console.print("  Run locally, or:  [bold]ssh -t <host> ig-agent review[/bold]")
+        console.print("  Or use the dashboard: [bold]ig-agent dashboard[/bold]")
+        raise typer.Exit(1)
+
+    items = db.content_list(status="pending_review", limit=200)
     if not items:
         console.print("[green]No items pending review.[/green]")
         return
+    console.print(
+        f"[dim]{len(items)} pending items. "
+        "Select 'quit' any time to stop — approved ones stay approved.[/dim]"
+    )
 
     for item in items:
         _print_item(item)
@@ -674,7 +688,10 @@ def drain(limit: int = typer.Option(3, min=1, max=10)) -> None:
     async def _go():
         n = 0
         for _ in range(limit):
-            cid = await poster.post_next(cfg)
+            # drain=True → bypass scheduled_for best-hours filter so the
+            # user gets an immediate first-post-proof without waiting
+            # until their configured posting window.
+            cid = await poster.post_next(cfg, drain=True)
             if cid is None:
                 break
             n += 1
