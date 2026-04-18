@@ -123,6 +123,38 @@ class Aesthetic(BaseModel):
         return v
 
 
+class HumanMimicConfig(BaseModel):
+    """Behavioural anti-detection switches. The 2026 IG ML detectors
+    flag bot-script patterns (cold posts, instant replies, scripted
+    timing) on top of plain request inspection. These switches close
+    the biggest gaps. Defaults are safe ON for everything since none
+    cost meaningful throughput."""
+    # Before posting, open the feed + mark a few posts seen to look
+    # like part of a normal session. ~30-60s overhead per post.
+    pre_post_scroll: bool = True
+    # After posting, enforce a 30-90min silent window before any other
+    # write action (comments, follows, likes). Prevents the "posted +
+    # liked 5 things within 10 seconds" bot-script signature.
+    post_cooldown: bool = True
+    # When replying to incoming comments, stagger with a random 5-60min
+    # delay per comment so replies don't arrive within seconds.
+    comment_reply_delay: bool = True
+    # Move hashtags out of the caption into a self-reply on the post.
+    # Cleaner caption, fewer 2026-ML downrank penalties on hashtag-
+    # heavy captions, same discoverability. Opt-in.
+    first_comment_hashtags: bool = False
+    # Before a comment/DM hits send, sleep length-proportional to the
+    # text so timing looks human (3-5 chars/sec).
+    typing_delays: bool = True
+    # Reject a caption if it's >85% similar to any of the last 10 posts.
+    caption_entropy_check: bool = True
+    # Refuse to upload media with off-spec dimensions that IG would
+    # re-compress server-side (and downrank).
+    aspect_ratio_check: bool = True
+    # Recycle the instagrapi Client every 2-4h to reset TCP pool.
+    rotate_client: bool = True
+
+
 class HashtagPools(BaseModel):
     core: list[str] = Field(..., min_length=3)
     growth: list[str] = Field(default_factory=list)
@@ -641,6 +673,11 @@ class NicheConfig(BaseModel):
 
     # Contrarian / hot-take mode — rolled per generation cycle.
     contrarian: ContrarianConfig = Field(default_factory=ContrarianConfig)
+
+    # Behavioural anti-detection toggles (pre-post scroll, cooldown,
+    # typing delay, first-comment hashtags, caption entropy check,
+    # aspect ratio check, client rotation). All safe ON by default.
+    human_mimic: HumanMimicConfig = Field(default_factory=HumanMimicConfig)
 
     competitors: list[str] = Field(default_factory=list)
     reference_accounts: list[str] = Field(default_factory=list)

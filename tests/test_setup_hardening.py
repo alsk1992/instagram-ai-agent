@@ -147,6 +147,95 @@ def test_challenge_handler_returns_code_when_imap_works(
     assert handler("testuser", 1) == "123456"
 
 
+# ─── Cookie-seed coverage (perma-session support) ───
+def test_cookie_seed_returns_none_without_sessionid(monkeypatch: pytest.MonkeyPatch):
+    """sessionid is the one required cookie — without it, we must fall
+    through to password login rather than attempting a partial seed."""
+    from src.plugins import ig
+    for k in ("IG_SESSIONID", "IG_DS_USER_ID", "IG_CSRFTOKEN", "IG_MID", "IG_DID",
+              "IG_DATR", "IG_RUR", "IG_SHBID", "IG_SHBTS", "IG_NRCB"):
+        monkeypatch.delenv(k, raising=False)
+    assert ig._build_cookie_seed() is None
+
+
+def test_cookie_seed_collects_every_cookie(monkeypatch: pytest.MonkeyPatch):
+    """User-supplied cookies land in the seed under their IG names
+    (not the env var names)."""
+    from src.plugins import ig
+    cookie_map = {
+        "IG_SESSIONID": "sess-xyz",
+        "IG_DS_USER_ID": "12345",
+        "IG_CSRFTOKEN": "csrf-abc",
+        "IG_MID": "mid-pqr",
+        "IG_DID": "did-stu",
+        "IG_DATR": "datr-vwx",
+        "IG_RUR": "rur-yza",
+        "IG_SHBID": "shbid-bcd",
+        "IG_SHBTS": "shbts-efg",
+        "IG_NRCB": "nrcb-hij",
+    }
+    for k, v in cookie_map.items():
+        monkeypatch.setenv(k, v)
+    seed = ig._build_cookie_seed()
+    assert seed is not None
+    # Every cookie is surfaced under its IG name
+    assert seed["sessionid"] == "sess-xyz"
+    assert seed["ds_user_id"] == "12345"
+    assert seed["csrftoken"] == "csrf-abc"
+    assert seed["mid"] == "mid-pqr"
+    assert seed["ig_did"] == "did-stu"
+    assert seed["datr"] == "datr-vwx"
+    assert seed["rur"] == "rur-yza"
+    assert seed["shbid"] == "shbid-bcd"
+    assert seed["shbts"] == "shbts-efg"
+    assert seed["ig_nrcb"] == "nrcb-hij"
+
+
+def test_cookie_seed_strips_empty_values(monkeypatch: pytest.MonkeyPatch):
+    """A whitespace-only env var must be treated as absent — presence
+    in seed is the signal for "use this cookie"."""
+    from src.plugins import ig
+    monkeypatch.setenv("IG_SESSIONID", "real-sess")
+    monkeypatch.setenv("IG_DS_USER_ID", "")
+    monkeypatch.setenv("IG_CSRFTOKEN", "   ")
+    seed = ig._build_cookie_seed()
+    assert seed is not None
+    assert "sessionid" in seed
+    assert "ds_user_id" not in seed   # empty
+    assert "csrftoken" not in seed    # whitespace-only
+
+
+def test_has_full_cookie_set_requires_three_minimum(monkeypatch: pytest.MonkeyPatch):
+    """Full-set path (set_settings, no /login) needs sessionid +
+    ds_user_id + csrftoken at minimum. Anything less falls back to
+    login_by_sessionid."""
+    from src.plugins import ig
+    assert ig._has_full_cookie_set({"sessionid": "s"}) is False
+    assert ig._has_full_cookie_set({"sessionid": "s", "ds_user_id": "u"}) is False
+    assert ig._has_full_cookie_set({
+        "sessionid": "s", "ds_user_id": "u", "csrftoken": "c",
+    }) is True
+    assert ig._has_full_cookie_set(None) is False
+    assert ig._has_full_cookie_set({}) is False
+
+
+def test_default_user_agent_matches_device(monkeypatch: pytest.MonkeyPatch):
+    """UA string must embed the device fingerprint values we claim, so
+    cookie-based sessions have internally-consistent device claims."""
+    from src.plugins import ig
+    device = {
+        "app_version": "999.9.9.9", "android_version": 30,
+        "android_release": "11", "dpi": "420dpi",
+        "resolution": "1080x2220", "manufacturer": "samsung",
+        "device": "SM-A525F", "model": "a52q", "cpu": "qcom",
+        "version_code": "521498971",
+    }
+    ua = ig._default_user_agent(device)
+    assert "999.9.9.9" in ua
+    assert "SM-A525F" in ua
+    assert "samsung" in ua
+
+
 # ─── FEED_FORMATS includes story_carousel ───
 def test_feed_formats_includes_story_carousel():
     """Audit polish: story_carousel weight in FormatMix must be in

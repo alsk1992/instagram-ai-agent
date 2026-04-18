@@ -36,28 +36,84 @@ class BackoffActive(RuntimeError):
 
 
 def _build_cookie_seed() -> dict[str, str] | None:
-    """Collect the cookie quad from env. Returns None if any required
-    cookie is missing so callers can fall through to password login."""
-    required = {
+    """Collect every IG web cookie we can consume from env.
+
+    Priority order for auth quality (best → worst):
+      1. FULL set — sessionid + ds_user_id + csrftoken + mid + ig_did +
+         datr + rur. Loaded via ``cl.set_settings`` so instagrapi never
+         needs to hit ``/login`` — zero challenge surface.
+      2. MINIMAL set — just sessionid. Loaded via ``login_by_sessionid``,
+         which fetches the remaining cookies from IG (can still trigger
+         a suspicious-login check on a fresh IP).
+      3. None — fall through to username/password login.
+
+    Returns a dict of every cookie provided (may be sparse) or None if
+    sessionid is absent.
+    """
+    cookies = {
         "sessionid":  os.environ.get("IG_SESSIONID", "").strip(),
         "ds_user_id": os.environ.get("IG_DS_USER_ID", "").strip(),
         "csrftoken":  os.environ.get("IG_CSRFTOKEN", "").strip(),
         "mid":        os.environ.get("IG_MID", "").strip(),
+        "ig_did":     os.environ.get("IG_DID", "").strip(),
+        "datr":       os.environ.get("IG_DATR", "").strip(),
+        "rur":        os.environ.get("IG_RUR", "").strip(),
+        "shbid":      os.environ.get("IG_SHBID", "").strip(),
+        "shbts":      os.environ.get("IG_SHBTS", "").strip(),
+        "ig_nrcb":    os.environ.get("IG_NRCB", "").strip(),
     }
-    # sessionid alone is enough for instagrapi's login_by_sessionid;
-    # ds_user_id / csrftoken / mid are bonuses that improve continuity.
-    if not required["sessionid"]:
+    if not cookies["sessionid"]:
         return None
-    return required
+    # Strip empties so we can detect "full set" via key presence.
+    return {k: v for k, v in cookies.items() if v}
+
+
+def _default_user_agent(device: dict) -> str:
+    """Instagram Android user agent string — mirrors instagrapi's own
+    builder so the cookies we paste match a plausible device claim."""
+    return (
+        f"Instagram {device.get('app_version', '302.0.0.23.114')} "
+        f"Android ({device.get('android_version', 30)}/"
+        f"{device.get('android_release', '11')}; "
+        f"{device.get('dpi', '420dpi')}; "
+        f"{device.get('resolution', '1080x2220')}; "
+        f"{device.get('manufacturer', 'samsung')}; "
+        f"{device.get('device', 'SM-A525F')}; "
+        f"{device.get('model', 'a52q')}; "
+        f"{device.get('cpu', 'qcom')}; en_US; "
+        f"{device.get('version_code', '521498971')})"
+    )
+
+
+def _session_refresh_days() -> int:
+    """Days after which we force a fresh password login. Default 7 per
+    2026 community consensus — cookies survive longer but server-side
+    session TTL decays and triggers silent rate-limit cascades."""
+    raw = os.environ.get("IG_SESSION_REFRESH_DAYS", "").strip()
+    if not raw:
+        return 7
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 7
+
+
+def _has_full_cookie_set(seed: dict[str, str]) -> bool:
+    """True when we have enough cookies to skip instagrapi's /login call
+    entirely. ``sessionid``, ``ds_user_id``, and ``csrftoken`` are the
+    minimum for ``cl.set_settings`` to reconstruct a valid session."""
+    return bool(seed and seed.get("sessionid") and seed.get("ds_user_id") and seed.get("csrftoken"))
 
 
 class IGClient:
     def __init__(self, username: str | None = None, password: str | None = None):
+        import time as _time
         self.username = username or os.environ.get("IG_USERNAME", "")
         self._password = password or os.environ.get("IG_PASSWORD", "")
         self.cl = Client()
         self.session_path: Path = SESSIONS_DIR / f"{self.username}.json"
         self._logged_in = False
+        self._client_created_at = _time.time()
 
         # Proxy (sticky per account)
         proxy = os.environ.get("IG_PROXY")
@@ -116,6 +172,25 @@ class IGClient:
         self.session_path.parent.mkdir(parents=True, exist_ok=True)
         settings_loaded = False
 
+        # Session-age refresh: if the persisted session is older than
+        # IG_SESSION_REFRESH_DAYS (default 7) we force a fresh password
+        # login. Rationale: cookies remain valid for weeks but IG's
+        # server-side session TTL is shorter; refreshing before it
+        # silently decays avoids the rate-limit / challenge cascade.
+        refresh_days = _session_refresh_days()
+        if refresh_days > 0 and self.session_path.exists():
+            import time
+            age_days = (time.time() - self.session_path.stat().st_mtime) / 86400.0
+            if age_days >= refresh_days:
+                log.info(
+                    "Session is %.1fd old (≥ %d) — forcing fresh login",
+                    age_days, refresh_days,
+                )
+                try:
+                    self.session_path.unlink()
+                except OSError:
+                    pass
+
         # If the user pointed us at an existing instagrapi session JSON
         # (exported from another tool, or transplanted from a different
         # machine) load that directly. Bypasses the fresh-login challenge
@@ -137,11 +212,40 @@ class IGClient:
             except Exception as e:
                 log.warning("Failed to load session, will re-login: %s", e)
 
-        # Direct cookie-seed path: if the user pasted IG_SESSIONID +
-        # IG_DS_USER_ID + IG_CSRFTOKEN + IG_MID into .env, seed
-        # instagrapi's cookie jar BEFORE login so the username/password
-        # call rides an already-authenticated session.
+        # Cookie-seed paths — two routes depending on how much the user
+        # pasted into .env:
+        #
+        #   FULL set (sessionid + ds_user_id + csrftoken + more):
+        #     reconstruct a full instagrapi settings dict and load via
+        #     cl.set_settings(). Zero network calls to /login → zero
+        #     challenge risk. This is the gold standard for first-boot
+        #     on a fresh VPS — identical to moving a warmed-up account
+        #     from one box to another.
+        #
+        #   MINIMAL set (just sessionid):
+        #     fall back to login_by_sessionid() which fetches the
+        #     remaining cookies from IG. Still cleaner than password
+        #     login, but IG DOES observe this call.
         if not settings_loaded and self._cookie_seed:
+            if _has_full_cookie_set(self._cookie_seed):
+                try:
+                    settings = self._build_settings_from_cookies(self._cookie_seed)
+                    self.cl.set_settings(settings)
+                    # Probe to confirm the session is live
+                    self.cl.get_timeline_feed()
+                    self._logged_in = True
+                    self.cl.dump_settings(str(self.session_path))
+                    log.info(
+                        "Loaded full cookie set (%d cookies) for %s — no /login call needed",
+                        len(self._cookie_seed), self.username,
+                    )
+                    from src.core.warmup import ensure_started
+                    ensure_started()
+                    return
+                except Exception as e:
+                    log.warning(
+                        "Full-cookie-set load failed: %s — trying login_by_sessionid", e,
+                    )
             try:
                 self.cl.login_by_sessionid(self._cookie_seed["sessionid"])
                 self._logged_in = True
@@ -202,6 +306,55 @@ class IGClient:
         except BadPassword:
             log.error("Bad password for %s — aborting.", self.username)
             raise
+
+    def _build_settings_from_cookies(self, cookies: dict[str, str]) -> dict:
+        """Assemble an instagrapi settings dict from pasted cookies +
+        our persisted device fingerprint. Produces the same shape as
+        ``cl.dump_settings()`` so set_settings() accepts it natively.
+        """
+        import time
+        device_settings = dev.load_or_create()
+        # Pull UUIDs out of the persisted device file so the cookie
+        # jar is consistent with the fingerprint.
+        uuids = {
+            k: device_settings[k]
+            for k in ("phone_id", "uuid", "client_session_id", "advertising_id", "device_id")
+            if k in device_settings
+        }
+        # Slice device keys (instagrapi's expected shape)
+        device_keys = (
+            "app_version", "android_version", "android_release",
+            "dpi", "resolution", "manufacturer", "device", "model",
+            "cpu", "version_code",
+        )
+        device = {k: device_settings[k] for k in device_keys if k in device_settings}
+
+        return {
+            "cookies": dict(cookies),
+            "last_login": int(time.time()),
+            "device_settings": device,
+            "user_agent": (
+                os.environ.get("IG_USER_AGENT", "").strip()
+                or _default_user_agent(device)
+            ),
+            "authorization_data": {
+                "ds_user_id": cookies.get("ds_user_id", ""),
+                "sessionid": cookies.get("sessionid", ""),
+                "should_use_header_over_cookies": True,
+            },
+            "uuids": uuids,
+            "mid": cookies.get("mid", ""),
+            "ig_u_rur": cookies.get("rur", ""),
+            "ig_www_claim": "",
+            # country / timezone / locale echoed so instagrapi's
+            # header builders use them consistently with our settings.
+            "country": os.environ.get("IG_COUNTRY_CODE", "").strip() or "US",
+            "country_code": 1,
+            "locale": os.environ.get("IG_LOCALE", "").strip() or "en_US",
+            "timezone_offset": (
+                int(os.environ.get("IG_TIMEZONE_OFFSET", "0").strip() or "0")
+            ),
+        }
 
     def _ensure_backoff_ok(self) -> None:
         until = db.state_get("backoff_until")
@@ -331,24 +484,53 @@ class IGClient:
         return mentions, hashtags, links
 
     # ───── Engagement ─────
+    def _ensure_post_cooldown_clear(self) -> None:
+        """Enforce the 30-90min silence after a post. Skipping write
+        actions inside that window stops the "posted + engaged within
+        seconds" bot-script fingerprint. Reads always allowed."""
+        from src.plugins import human_mimic as _hm
+        remaining = _hm.post_cooldown_remaining_s()
+        if remaining > 0:
+            raise BackoffActive(
+                f"post-cooldown active — {int(remaining / 60)}min of silence remaining "
+                "after the most recent post"
+            )
+
     def like(self, media_pk: str) -> bool:
         self._ensure_backoff_ok()
+        self._ensure_post_cooldown_clear()
         self._ensure_logged_in()
         return bool(self._retry(lambda: self.cl.media_like(media_pk)))
 
     def follow(self, user_id: str) -> bool:
         self._ensure_backoff_ok()
+        self._ensure_post_cooldown_clear()
         self._ensure_logged_in()
         return bool(self._retry(lambda: self.cl.user_follow(user_id)))
 
     def unfollow(self, user_id: str) -> bool:
         self._ensure_backoff_ok()
+        self._ensure_post_cooldown_clear()
         self._ensure_logged_in()
         return bool(self._retry(lambda: self.cl.user_unfollow(user_id)))
 
     def comment(self, media_pk: str, text: str) -> str:
         self._ensure_backoff_ok()
+        # Note: no post-cooldown gate here — the first-comment-hashtag
+        # drop in poster.py IS the exception that justifies posting a
+        # comment immediately after an upload. Engager-driven comments
+        # on OTHER users' posts go through _ensure_post_cooldown_clear
+        # via the worker layer.
         self._ensure_logged_in()
+
+        # Typing delay for a human-shaped submit time. Uses cfg from
+        # the env-facing helper — avoids threading NicheConfig through
+        # every call site. Only adds latency; no failure mode.
+        import os as _os
+        if _os.environ.get("IG_DISABLE_TYPING_DELAYS", "") != "1":
+            from src.plugins import human_mimic as _hm
+            _hm.sleep_typing(text)
+
         com = self._retry(lambda: self.cl.media_comment(media_pk, text))
         return str(getattr(com, "pk", com))
 
@@ -469,8 +651,46 @@ class IGClient:
 
     # ───── Internal ─────
     def _ensure_logged_in(self) -> None:
+        # Client rotation — every 2-4h, tear down the underlying
+        # instagrapi Client and load a fresh one from the persisted
+        # session so we reset the TCP pool + HTTP/2 stream IDs. Real
+        # users close the app; bot scripts hold one connection for
+        # days. Mimic the former.
+        if self._should_rotate_client():
+            self._rotate_client_now()
+
         if not self._logged_in:
             self.login()
+
+    def _should_rotate_client(self) -> bool:
+        import time as _time
+        from src.plugins import human_mimic as _hm
+        age = _time.time() - self._client_created_at
+        try:
+            return _hm.should_rotate_client(age, seed_ts=self._client_created_at)
+        except Exception:
+            return False
+
+    def _rotate_client_now(self) -> None:
+        """Rebuild the underlying instagrapi Client with the persisted
+        session + device. On failure, keep the old client — this is a
+        polish pass, not a correctness step."""
+        import time as _time
+        try:
+            new_cl = Client()
+            dev.apply_to(new_cl)
+            if os.environ.get("IG_PROXY"):
+                new_cl.set_proxy(os.environ["IG_PROXY"])
+            new_cl.challenge_code_handler = ch.make_challenge_code_handler()
+            new_cl.totp_code_handler = ch.make_totp_handler()
+            new_cl.delay_range = [2, 6]
+            if self.session_path.exists():
+                new_cl.load_settings(str(self.session_path))
+            self.cl = new_cl
+            self._client_created_at = _time.time()
+            log.info("client rotation: new instagrapi Client instantiated")
+        except Exception as e:
+            log.warning("client rotation failed (keeping old client): %s", e)
 
     def _retry(self, fn, attempts: int = 3):
         last: Exception | None = None

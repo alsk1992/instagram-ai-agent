@@ -29,6 +29,59 @@ Steps 3–5 prove the pipeline end-to-end with your first real post. After that,
 
 **Prefer Make?** `make install && make init && make login && make generate N=3 && make review && make run`.
 
+## 🛡️ Operating-safe best practices
+
+Instagram aggressively punishes signals of automation. Follow these to stay out of challenge loops + shadowbans:
+
+### One account = one VPS = one IP = one device fingerprint
+The agent generates a persistent `data/device.json` fingerprint the first time it runs; don't rotate it, don't copy it between machines, don't share IPs between accounts. Run each account on its own cheap VPS (a $5/mo droplet is plenty — Hetzner, Vultr, OVH, Contabo all work). Residential proxies from Smartproxy/Bright Data/IPRoyal make the IP less DC-looking.
+
+### Paste browser cookies into `.env` BEFORE first login
+The single biggest challenge-avoidance trick: log into your IG account in a browser → DevTools → Application → Cookies → copy **all ten cookies** into the `IG_*` variables in `.env.example`. The agent will call `cl.set_settings()` with the full cookie jar and skip instagrapi's `/login` endpoint entirely. IG never sees a suspicious-login event because there's no login event — the session was already warm.
+
+Cookies that matter (copy all you can; `sessionid` alone is minimum):
+| Cookie | Env var | Role |
+|---|---|---|
+| `sessionid` | `IG_SESSIONID` | The auth token. Required. |
+| `ds_user_id` | `IG_DS_USER_ID` | User ID, unlocks set_settings path |
+| `csrftoken` | `IG_CSRFTOKEN` | CSRF protection, required for POSTs |
+| `mid` | `IG_MID` | Device/account binding |
+| `ig_did` | `IG_DID` | Device UUID-level identity |
+| `datr` | `IG_DATR` | Persistent device marker (critical!) |
+| `rur` | `IG_RUR` | Datacenter routing hint |
+| `shbid` / `shbts` | `IG_SHBID` / `IG_SHBTS` | Shard routing |
+| `ig_nrcb` | `IG_NRCB` | Notification registration |
+
+### Geographic coherence
+Set `IG_COUNTRY_CODE`, `IG_TIMEZONE_OFFSET`, and `IG_LOCALE` to match the account's country-of-origin. A US-registered account logging in from a UK timezone looks suspicious.
+
+### Warmup period
+The agent auto-enters "warmup mode" on first login — capped per-action daily budgets that ramp up over 2 weeks. Don't override it for fresh accounts. `ig-agent warmup-status` shows where you are.
+
+### One account per VPS — not one-to-many
+Don't run multiple accounts from the same process / VPS / IP. Each needs its own clone, its own `.venv`, its own `data/` directory, its own proxy. The architecture supports this trivially — `ig-agent` is scoped entirely to its working directory.
+
+### 2026-specific gotchas worth knowing
+
+Distilled from the instagrapi issue tracker + [multiaccounts.com 2025 fingerprint guide](https://multiaccounts.com/blog/instagram-fingerprint-detection-avoidance-guide-2025) + 2026 warmup playbooks:
+
+- **IG now TLS/HTTP-2 fingerprints.** Python's `httpx`/`requests` produce a different TLS handshake than a real mobile app. This is largely outside our control from Python; the best defence is geographic coherence (matching your account's home region) + a residential proxy.
+- **Same Reel/meme across multiple accounts = instant network flag** within ~48h. Every account needs its own niche.yaml and its own generated content — don't copy approved posts between boxes.
+- **Stick your proxy for 24-48 hours.** Rotating every request marks you as a proxy farm. Most residential-proxy providers expose a "sticky session" toggle — use it with a multi-hour window.
+- **IPv4 over IPv6.** IPv6 pools are newer; IG flags them more aggressively.
+- **Pin `ig_did` + `datr` forever.** They're stored in your pasted cookies (or auto-generated in `data/device.json`) and must NEVER rotate within an account's lifetime.
+- **Warmup cadence (2026 playbook):**
+  - Days 1–3: 5–10 follows/day, 2–5 story views, ZERO interactions. No bio link yet (link-on-day-1 = instant shadowban).
+  - Days 4–7: 15–20 follows, 1–2 likes on non-competitor posts, 1 neutral story.
+  - Days 8–14: 30 follows, 5–10 comments, 1 Reel share.
+  - First feed post: day 7+. `ig-agent warmup-status` shows where you are.
+- **Session decay:** the agent force-refreshes your session every 7 days (`IG_SESSION_REFRESH_DAYS`). IG's server-side session TTL is shorter than the cookie TTL, and a decayed session looks like an automation-farm signal.
+- **Early-warning signals** in logs — watch for these to cut losses BEFORE a full ban:
+  - `feedback_required` with reason `"login_attempts"` → you're rate-limited, back off 12h+
+  - `challenge_required` response → 2-4h window before a hard block
+  - Instagrapi raising `PleaseWaitFewMinutes` repeatedly → reduce engagement budget
+- **Graph API is not a rescue.** Meta's official Graph API only does Reels posting on Business/Creator accounts and requires 2-12w approval. For personal-account automation, instagrapi-style private-API access is currently the only path.
+
 ## What it does
 
 1. **Mines the niche** — scrapes top posts of your hashtags + competitors via Instaloader, pushes trend signals to the brain.

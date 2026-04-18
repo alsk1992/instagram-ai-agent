@@ -180,6 +180,21 @@ async def generate_one(
                 continue
             return None
 
+        # Caption-entropy guard — refuse captions that are too similar
+        # to any of our last 10 posts. Catches LLM-template drift that
+        # phash dedup misses (different image, same caption template).
+        if cfg.human_mimic.caption_entropy_check:
+            from src.plugins import human_mimic as _hm
+            recent_captions = [r["caption"] for r in recent if r.get("caption")]
+            if _hm.captions_too_similar(best["caption"], recent_captions):
+                log.warning(
+                    "caption_entropy: %r too similar to recent — regenerating",
+                    best["caption"][:80],
+                )
+                if attempt < attempts - 1:
+                    continue
+                return None
+
         verdict = score.get("verdict", "regen")
         if verdict == "reject":
             log.info("Critic rejected; dropping")

@@ -151,7 +151,9 @@ async def run_pass(cfg: NicheConfig, ig: IGClient | None = None, batch: int = 4)
 
     todo = db.inbound_comments_to_reply(limit=batch * 2)
     sent = 0
-    for c in todo:
+    import asyncio as _asyncio
+    import random as _random
+    for i, c in enumerate(todo):
         if sent >= remaining:
             break
         text = c.get("text") or ""
@@ -161,6 +163,19 @@ async def run_pass(cfg: NicheConfig, ig: IGClient | None = None, batch: int = 4)
         if not await _is_worth_replying(cfg, text):
             db.inbound_comment_ignore(c["comment_pk"])
             continue
+
+        # Comment-reply stagger — if enabled, wait 5-60 min-ish BETWEEN
+        # replies in the same batch so IG doesn't see 4 replies all
+        # landing within 30 seconds. First reply of the batch fires
+        # immediately; subsequent ones space out.
+        if cfg.human_mimic.comment_reply_delay and i > 0:
+            wait_s = _random.uniform(5 * 60, 60 * 60)  # 5..60 min
+            log.info(
+                "comment_replier: staggering next reply by %d min (anti-burst)",
+                int(wait_s / 60),
+            )
+            await _asyncio.sleep(wait_s)
+
         try:
             reply = await _compose_reply(cfg, text, c.get("username") or "")
             if not reply:
