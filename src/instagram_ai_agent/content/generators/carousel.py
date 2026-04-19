@@ -6,8 +6,12 @@ from string import Template
 
 from instagram_ai_agent.content import slide1_hook as slide1_mod
 from instagram_ai_agent.content.generators.base import GeneratedContent, staging_path
-from instagram_ai_agent.content.generators.playwright_render import base_css, pick_template, render_html_to_png
-from instagram_ai_agent.content.style import apply_lut_image, apply_watermark
+from instagram_ai_agent.content.generators.playwright_render import (
+    base_css,
+    pick_template,
+    render_html_to_png,
+)
+from instagram_ai_agent.content.style import apply_lut_image
 from instagram_ai_agent.core.config import NicheConfig
 from instagram_ai_agent.core.llm import generate_json
 
@@ -18,7 +22,7 @@ async def _llm_outline(
     slides: int,
     *,
     contrarian: bool = False,
-    slide1: "slide1_mod.Slide1Hook | None" = None,
+    slide1: slide1_mod.Slide1Hook | None = None,
 ) -> list[dict]:
     system = (
         f"You design Instagram carousels for a page about {cfg.niche}.\n"

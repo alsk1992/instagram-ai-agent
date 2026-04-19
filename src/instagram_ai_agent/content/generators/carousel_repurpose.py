@@ -16,18 +16,20 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import os
 import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from html import escape
 from pathlib import Path
 from string import Template
-from typing import Any
 
 from instagram_ai_agent.content.generators.base import GeneratedContent, staging_path
-from instagram_ai_agent.content.generators.playwright_render import base_css, pick_template, render_html_to_png
+from instagram_ai_agent.content.generators.playwright_render import (
+    base_css,
+    pick_template,
+    render_html_to_png,
+)
 from instagram_ai_agent.content.style import apply_lut_image
 from instagram_ai_agent.core import db
 from instagram_ai_agent.core.config import NicheConfig
@@ -48,13 +50,13 @@ def _seen() -> dict[str, str]:
 
 def _mark_repurposed(source_reel_id: int) -> None:
     store = _seen()
-    store[str(source_reel_id)] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    store[str(source_reel_id)] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     # Prune anything older than 365d so the store can't grow unbounded.
-    cutoff = datetime.now(timezone.utc) - timedelta(days=365)
+    cutoff = datetime.now(UTC) - timedelta(days=365)
     pruned = {}
     for k, v in store.items():
         try:
-            ts = datetime.strptime(v, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            ts = datetime.strptime(v, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
         except (TypeError, ValueError):
             continue
         if ts >= cutoff:
@@ -78,7 +80,7 @@ def _parse_iso(ts: str) -> datetime | None:
     if not ts:
         return None
     try:
-        return datetime.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        return datetime.strptime(ts.replace("Z", ""), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
     except (TypeError, ValueError):
         return None
 
@@ -99,7 +101,7 @@ def pick_candidate(cfg: NicheConfig) -> RepurposeCandidate | None:
     if not rc.enabled:
         return None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     max_cutoff = now - timedelta(days=rc.min_reel_age_days)
     min_cutoff = now - timedelta(days=rc.max_reel_age_days)
     seen = _seen()

@@ -12,8 +12,7 @@ from __future__ import annotations
 import asyncio
 import signal
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -24,7 +23,6 @@ from instagram_ai_agent.brain import (
     devto,
     dm_seeder,
     engagement_seeder,
-    events as events_mod,
     hackernews,
     hashtag_discovery,
     news_feed,
@@ -34,6 +32,9 @@ from instagram_ai_agent.brain import (
     trend_miner,
     watcher,
     wiki_otd,
+)
+from instagram_ai_agent.brain import (
+    events as events_mod,
 )
 from instagram_ai_agent.content import pipeline as content_pipeline
 from instagram_ai_agent.content.generators import carousel_repurpose
@@ -45,8 +46,8 @@ from instagram_ai_agent.core.config import (
     load_env,
     load_niche,
 )
-from instagram_ai_agent.core.logging_setup import setup_logging
 from instagram_ai_agent.core.llm import providers_configured
+from instagram_ai_agent.core.logging_setup import setup_logging
 from instagram_ai_agent.plugins.ig import BackoffActive, IGClient
 from instagram_ai_agent.workers import (
     comment_replier,
@@ -96,8 +97,8 @@ class Orchestrator:
         """Periodic liveness signal so status + dashboard can show
         'agent alive, doing X' instead of a black-box silence."""
         try:
-            from datetime import datetime, timezone
-            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            from datetime import datetime
+            now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             db.state_set("last_heartbeat", now)
             # Snapshot recent activity since last heartbeat
             conn = db.get_conn()
@@ -137,55 +138,55 @@ class Orchestrator:
             return
         try:
             engager.run_pass(self.cfg, ig=self.ig)
-        except Exception as e:
+        except Exception:
             log.exception("job_engage failed")
 
     async def job_trends(self) -> None:
         try:
             await trend_miner.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_trends failed")
 
     async def job_competitors(self) -> None:
         try:
             await competitor_intel.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_competitors failed")
 
     async def job_news(self) -> None:
         try:
             await news_feed.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_news failed")
 
     async def job_hackernews(self) -> None:
         try:
             await hackernews.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_hackernews failed")
 
     async def job_devto(self) -> None:
         try:
             await devto.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_devto failed")
 
     async def job_wiki_otd(self) -> None:
         try:
             await wiki_otd.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_wiki_otd failed")
 
     def job_hashtag_discovery(self) -> None:
         try:
             hashtag_discovery.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_hashtag_discovery failed")
 
     def job_watch(self) -> None:
         try:
             watcher.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_watch failed")
 
     async def job_seed_engagement(self) -> None:
@@ -194,7 +195,7 @@ class Orchestrator:
             seeded = sum(results.values())
             if seeded:
                 log.info("seeded %d engagement actions: %s", seeded, results)
-        except Exception as e:
+        except Exception:
             log.exception("job_seed_engagement failed")
 
     def job_seed_dm(self) -> None:
@@ -202,7 +203,7 @@ class Orchestrator:
             n = dm_seeder.run_once(self.cfg)
             if n:
                 log.info("dm_seeder added %d discovered contacts", n)
-        except Exception as e:
+        except Exception:
             log.exception("job_seed_dm failed")
 
     async def job_curate_dm(self) -> None:
@@ -210,56 +211,56 @@ class Orchestrator:
             promoted = await dm_worker.curate_discovered(self.cfg)
             if promoted:
                 log.info("dm_curate: %d promoted discovered→targeted", promoted)
-        except Exception as e:
+        except Exception:
             log.exception("job_curate_dm failed")
 
     async def job_dm(self) -> None:
         try:
             await dm_worker.run_pass(self.cfg, ig=self.ig)
-        except Exception as e:
+        except Exception:
             log.exception("job_dm failed")
 
     async def job_comment_replies(self) -> None:
         try:
             await comment_replier.run_pass(self.cfg, ig=self.ig)
-        except Exception as e:
+        except Exception:
             log.exception("job_comment_replies failed")
 
     async def job_follow_back(self) -> None:
         try:
             await follow_back.run_pass(self.cfg, ig=self.ig)
-        except Exception as e:
+        except Exception:
             log.exception("job_follow_back failed")
 
     def job_reciprocal(self) -> None:
         try:
             follow_back.queue_reciprocal_from_recent_comments()
-        except Exception as e:
+        except Exception:
             log.exception("job_reciprocal failed")
 
     async def job_retro(self) -> None:
         try:
             await retro.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_retro failed")
 
     async def job_rag_index(self) -> None:
         try:
             if self.cfg.rag.enabled:
                 await rag.index_dir(cfg=self.cfg.rag)
-        except Exception as e:
+        except Exception:
             log.exception("job_rag_index failed")
 
     async def job_events(self) -> None:
         try:
             await events_mod.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_events failed")
 
     async def job_reddit(self) -> None:
         try:
             await reddit_harvester.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_reddit failed")
 
     async def job_keepalive(self) -> None:
@@ -275,19 +276,19 @@ class Orchestrator:
     async def job_repurpose(self) -> None:
         try:
             await carousel_repurpose.run_once(self.cfg)
-        except Exception as e:
+        except Exception:
             log.exception("job_repurpose failed")
 
     def job_story_viewer(self) -> None:
         try:
             story_viewer.run_pass(self.cfg, ig=self.ig)
-        except Exception as e:
+        except Exception:
             log.exception("job_story_viewer failed")
 
     async def job_health(self) -> None:
         try:
             await health.probe(self.cfg, ig=self.ig)
-        except Exception as e:
+        except Exception:
             log.exception("job_health failed")
 
     async def job_schedule_approved(self) -> None:
@@ -295,7 +296,7 @@ class Orchestrator:
             n = poster.schedule_approved_items(self.cfg)
             if n:
                 log.info("scheduled %d approved items", n)
-        except Exception as e:
+        except Exception:
             log.exception("job_schedule_approved failed")
 
     # ─── wiring ───

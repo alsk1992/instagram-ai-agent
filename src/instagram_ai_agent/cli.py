@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import webbrowser
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -24,12 +25,11 @@ from instagram_ai_agent.core import db
 from instagram_ai_agent.core.config import (
     ENV_PATH,
     NICHE_PATH,
-    ROOT,
     Aesthetic,
+    BrandCharacter,
     Budget,
     FormatMix,
     HashtagPools,
-    BrandCharacter,
     HumanPhoto,
     NicheConfig,
     Safety,
@@ -384,7 +384,7 @@ def init(
     console.print(f"[green]Wrote[/green] {ENV_PATH}")
 
     db.init_db()
-    console.print(f"[green]Initialised[/green] brain.db")
+    console.print("[green]Initialised[/green] brain.db")
 
     # Auto-seed the idea bank — every generation cycle picks an archetype,
     # so a fresh install with zero ideas strips a quality layer. The seed
@@ -1073,11 +1073,18 @@ def login() -> None:
 
     from instagrapi.exceptions import (
         BadPassword as _BadPassword,
+    )
+    from instagrapi.exceptions import (
         ChallengeRequired as _ChallengeRequired,
+    )
+    from instagrapi.exceptions import (
         LoginRequired as _LoginRequired,
+    )
+    from instagrapi.exceptions import (
         TwoFactorRequired as _TwoFactorRequired,
     )
-    from instagram_ai_agent.plugins.ig import IGClient, ChallengeNeedsManualCode
+
+    from instagram_ai_agent.plugins.ig import ChallengeNeedsManualCode, IGClient
 
     cl = IGClient()
     try:
@@ -1220,7 +1227,7 @@ def generate(
     async def _go():
         made: list[int] = []
         failures: list[str] = []
-        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+        from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -1368,14 +1375,14 @@ def status() -> None:
     cfg = _require_niche()
 
     # ─── Agent pulse ─────────────────────────────────────────
-    from datetime import datetime, timezone
+    from datetime import datetime
     paused = (db.state_get("paused") or "").lower() in ("1", "true", "yes")
     last_beat = db.state_get("last_heartbeat")
     beat_line = "[dim]never[/dim]"
     if last_beat:
         try:
             beat_dt = datetime.fromisoformat(last_beat.replace("Z", "+00:00"))
-            age_min = (datetime.now(timezone.utc) - beat_dt).total_seconds() / 60
+            age_min = (datetime.now(UTC) - beat_dt).total_seconds() / 60
             if age_min < 5:
                 beat_line = f"[green]{age_min:.1f} min ago[/green]"
             elif age_min < 60:
@@ -1521,7 +1528,8 @@ def add_content(
         if not p.exists():
             console.print(f"[red]missing:[/red] {p}")
             raise typer.Exit(1)
-    from instagram_ai_agent.content import dedup, hashtags as hashtags_mod
+    from instagram_ai_agent.content import dedup
+    from instagram_ai_agent.content import hashtags as hashtags_mod
     cfg = _require_niche()
 
     phash = dedup.compute_phash(media[0])
@@ -1577,6 +1585,7 @@ def dashboard_cmd(
     db.init_db()
     _require_niche()
     import uvicorn
+
     from instagram_ai_agent.dashboard import create_app
     application = create_app()
     console.print(f"[green]Dashboard[/green] → http://{host}:{port}")

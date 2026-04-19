@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from instagram_ai_agent.core import db
 from instagram_ai_agent.core.config import NicheConfig
@@ -153,4 +153,4 @@ def effective_caps(cfg: NicheConfig) -> EffectiveBudget:
 
 
 def _today_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")

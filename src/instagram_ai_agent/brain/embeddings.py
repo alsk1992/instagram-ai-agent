@@ -22,8 +22,8 @@ from __future__ import annotations
 import asyncio
 import math
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 import httpx
 

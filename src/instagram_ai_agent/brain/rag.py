@@ -18,7 +18,6 @@ import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from instagram_ai_agent.brain import embeddings as embed_mod
 from instagram_ai_agent.core import db

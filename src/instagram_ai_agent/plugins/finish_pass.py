@@ -47,9 +47,9 @@ _local_restorer: Any = None
 
 def _local_available() -> bool:
     try:
+        import gfpgan  # noqa: F401
         import realesrgan  # noqa: F401
-        import gfpgan      # noqa: F401
-        import torch       # noqa: F401
+        import torch  # noqa: F401
         return True
     except Exception:
         return False

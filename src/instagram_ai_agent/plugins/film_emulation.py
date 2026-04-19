@@ -126,9 +126,7 @@ def _apply_grain(img: Image.Image, sigma: float, rng: random.Random) -> Image.Im
 def _apply_vignette(img: Image.Image, strength: float) -> Image.Image:
     """Radial darkening from edges. ``strength`` 0.0–1.0 roughly = edge darkness %."""
     w, h = img.size
-    # Build a radial gradient mask: white in centre, darker at corners
-    mask = Image.new("L", (w, h), 255)
-    # Fast approximation: a large Gaussian-blurred ellipse
+    # Fast approximation: a large Gaussian-blurred ellipse gradient
     cx, cy = w // 2, h // 2
     max_r = (cx * cx + cy * cy) ** 0.5
     darkening = int(255 * strength)

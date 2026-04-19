@@ -13,7 +13,7 @@ from instagram_ai_agent.content import image_rank
 from instagram_ai_agent.content.generators.base import GeneratedContent, staging_path
 from instagram_ai_agent.content.style import apply_film_look, apply_lut_image, apply_watermark
 from instagram_ai_agent.core.config import NicheConfig
-from instagram_ai_agent.core.llm import generate
+from instagram_ai_agent.core.llm import generate as llm_generate
 from instagram_ai_agent.core.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -49,7 +49,7 @@ async def _ideate_prompt(cfg: NicheConfig, trend_context: str) -> str:
         "One sentence. No lists."
     )
     prompt = f"Trend/idea to riff on:\n{trend_context or '(general niche scene)'}\n\nReturn ONLY the prompt sentence."
-    return (await generate("bulk", prompt, system=system, max_tokens=240)).strip().strip('"')
+    return (await llm_generate("bulk", prompt, system=system, max_tokens=240)).strip().strip('"')
 
 
 async def _fetch_single(

@@ -27,7 +27,6 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-
 # Each pattern is matched case-insensitively against the joined caption
 # + visible-text + hook content. The label surfaces in the rejection
 # log so an operator can tell WHY a take got killed.

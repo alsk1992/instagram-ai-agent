@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from instagram_ai_agent.content.generators.base import GeneratedContent, staging_path
 from instagram_ai_agent.content.style import _load_font, apply_watermark
-from instagram_ai_agent.core.config import NicheConfig, TEMPLATES_DIR
+from instagram_ai_agent.core.config import TEMPLATES_DIR, NicheConfig
 from instagram_ai_agent.core.llm import generate_json
 from instagram_ai_agent.core.logging_setup import get_logger
 

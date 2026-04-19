@@ -21,9 +21,14 @@ import shutil
 import struct
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
-from instagram_ai_agent.core.config import LORA_DATASETS_DIR, LORAS_DIR, NICHE_PATH, NicheConfig, load_niche, save_niche
+from instagram_ai_agent.core.config import (
+    LORA_DATASETS_DIR,
+    LORAS_DIR,
+    NICHE_PATH,
+    NicheConfig,
+    save_niche,
+)
 from instagram_ai_agent.core.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -257,7 +262,7 @@ async def prepare_dataset(
                     ),
                     timeout=60.0,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log.warning("auto-caption timed out for %s — trigger-only fallback", dest_img.name)
             except Exception as e:
                 log.warning("auto-caption failed for %s: %s", dest_img.name, e)

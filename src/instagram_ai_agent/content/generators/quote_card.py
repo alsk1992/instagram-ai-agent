@@ -5,7 +5,11 @@ from html import escape
 from string import Template
 
 from instagram_ai_agent.content.generators.base import GeneratedContent, staging_path
-from instagram_ai_agent.content.generators.playwright_render import base_css, pick_template, render_html_to_png
+from instagram_ai_agent.content.generators.playwright_render import (
+    base_css,
+    pick_template,
+    render_html_to_png,
+)
 from instagram_ai_agent.content.style import apply_lut_image, apply_watermark
 from instagram_ai_agent.core.config import NicheConfig
 from instagram_ai_agent.core.llm import generate_json

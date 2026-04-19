@@ -11,7 +11,6 @@ via IGClient.upload_story_video.
 """
 from __future__ import annotations
 
-import asyncio
 import os
 import random
 import subprocess
@@ -188,7 +187,8 @@ async def generate(
         )
 
         # 4. Optional music bed on story videos (lighter volume — stories are 10s)
-        from instagram_ai_agent.plugins import audio_mix, music as music_plugin
+        from instagram_ai_agent.plugins import audio_mix
+        from instagram_ai_agent.plugins import music as music_plugin
         final_audio = vo_path
         if cfg.music.enabled:
             try:

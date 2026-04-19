@@ -543,7 +543,7 @@ class ControlNetConfig(BaseModel):
     preprocessor_override: str = ""
 
     @model_validator(mode="after")
-    def _end_after_start(self) -> "ControlNetConfig":
+    def _end_after_start(self) -> ControlNetConfig:
         if self.end_percent < self.start_percent:
             raise ValueError(
                 f"controlnet.end_percent ({self.end_percent}) must be "
@@ -605,7 +605,7 @@ class ReelRepurposeConfig(BaseModel):
     template_variant: str = "photo_caption"
 
     @model_validator(mode="after")
-    def _age_window_nonempty(self) -> "ReelRepurposeConfig":
+    def _age_window_nonempty(self) -> ReelRepurposeConfig:
         if self.max_reel_age_days < self.min_reel_age_days:
             raise ValueError(
                 f"reel_repurpose.max_reel_age_days ({self.max_reel_age_days}) "
@@ -715,7 +715,7 @@ class NicheConfig(BaseModel):
     language: str = "en"
 
     @model_validator(mode="after")
-    def _sao_license_gate(self) -> "NicheConfig":
+    def _sao_license_gate(self) -> NicheConfig:
         """Stable Audio Open Small runs under the Stability AI Community
         Licence — free up to USD 1M annual revenue, Enterprise above.
         We can't check a user's revenue but we can force them to
@@ -733,7 +733,7 @@ class NicheConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _controlnet_commercial_gate(self) -> "NicheConfig":
+    def _controlnet_commercial_gate(self) -> NicheConfig:
         """Refuse non-commercial preprocessor overrides under commercial=True.
 
         Substring-matched blocklist so any variant of OpenPose /
@@ -758,7 +758,7 @@ class NicheConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _lora_commercial_gate(self) -> "NicheConfig":
+    def _lora_commercial_gate(self) -> NicheConfig:
         """FLUX.1-dev is non-commercial-only. A monetised page (commercial=True)
         that picks base_model='flux-dev' in lora config would silently ship
         images trained + inferred under a licence that forbids the use case.
@@ -853,7 +853,7 @@ class LLMProviders(BaseModel):
     cerebras: bool = False
 
     @classmethod
-    def from_env(cls) -> "LLMProviders":
+    def from_env(cls) -> LLMProviders:
         return cls(
             openrouter=bool(os.environ.get("OPENROUTER_API_KEY")),
             groq=bool(os.environ.get("GROQ_API_KEY")),

@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from instagram_ai_agent.core import db
@@ -134,7 +134,7 @@ def _record_seen(items: list[RedditQuestion], *, lookback_hours: int) -> None:
         store[q.key] = q.created_utc
     # Prune: keep entries newer than 2× lookback_hours so we can't
     # re-push them, but don't let the store grow unbounded.
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=lookback_hours * 2)).timestamp()
+    cutoff = (datetime.now(UTC) - timedelta(hours=lookback_hours * 2)).timestamp()
     store = {k: v for k, v in store.items() if v >= cutoff}
     db.state_set_json(_SEEN_KEY, store)
 
@@ -155,7 +155,7 @@ def fetch_questions(cfg: NicheConfig) -> list[RedditQuestion]:
         return []
 
     cutoff_ts = (
-        datetime.now(timezone.utc) - timedelta(hours=cfg.reddit_lookback_hours)
+        datetime.now(UTC) - timedelta(hours=cfg.reddit_lookback_hours)
     ).timestamp()
 
     out: list[RedditQuestion] = []

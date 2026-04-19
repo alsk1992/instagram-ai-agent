@@ -13,17 +13,19 @@ from __future__ import annotations
 
 import os
 import random
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from html import escape
-from pathlib import Path
 from string import Template
 from urllib.parse import quote_plus
 
 import httpx
 
 from instagram_ai_agent.content.generators.base import GeneratedContent, staging_path
-from instagram_ai_agent.content.generators.playwright_render import base_css, load_template, render_html_to_png
+from instagram_ai_agent.content.generators.playwright_render import (
+    base_css,
+    load_template,
+    render_html_to_png,
+)
 from instagram_ai_agent.content.style import apply_lut_image, apply_watermark
 from instagram_ai_agent.core.config import NicheConfig
 from instagram_ai_agent.core.llm import generate_json
@@ -156,7 +158,7 @@ def _render_html(
         hook=escape(hook),
         detail=escape(detail),
         cta_block=cta_block,
-        timestamp=datetime.now(timezone.utc).strftime("%b %d").lower(),
+        timestamp=datetime.now(UTC).strftime("%b %d").lower(),
         watermark=escape(cfg.aesthetic.watermark or ""),
         swipe_hint=swipe_hint,
     )

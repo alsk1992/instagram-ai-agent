@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import random
 import time
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -857,6 +858,7 @@ class IGClient:
 
     def _should_rotate_client(self) -> bool:
         import time as _time
+
         from instagram_ai_agent.plugins import human_mimic as _hm
         age = _time.time() - self._client_created_at
         try:
@@ -915,7 +917,7 @@ class IGClient:
             except ChallengeRequired as e:
                 _enter_cooldown("challenge", hours=24)
                 raise e
-            except (LoginRequired,) as e:
+            except LoginRequired as e:
                 last = e
                 log.warning("LoginRequired mid-call — relogging")
                 try:
@@ -940,16 +942,16 @@ def _enter_cooldown(reason: str, hours: int) -> None:
     cooldown — don't spam the user on repeat attempts that re-enter). The
     alert path is fire-and-forget; if no channel is configured it's a no-op.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     already = db.state_get("backoff_until")
-    until = (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    until = (datetime.now(UTC) + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
     db.state_set("backoff_until", until)
     db.state_set("backoff_reason", reason)
     log.error("Entering cooldown: %s (until %s)", reason, until)
 
     # Alert on NEW cooldowns only — don't spam on repeat-attempt re-entry.
-    if not already or already < datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"):
+    if not already or already < datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"):
         try:
             from instagram_ai_agent.core import alerts as _alerts
             _alerts.send_sync(

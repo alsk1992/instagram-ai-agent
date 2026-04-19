@@ -25,7 +25,7 @@ import edge_tts
 import httpx
 
 from instagram_ai_agent.content.generators.base import GeneratedContent, staging_path
-from instagram_ai_agent.content.style import apply_lut_video, apply_watermark
+from instagram_ai_agent.content.style import apply_lut_video
 from instagram_ai_agent.core.config import NicheConfig
 from instagram_ai_agent.core.llm import generate_json
 from instagram_ai_agent.core.logging_setup import get_logger
@@ -339,7 +339,6 @@ def mux_audio_captions(
 def subtitle_style(cfg: NicheConfig) -> str:
     # ASS-style overrides supported by ffmpeg libass. Use palette for accent.
     heading = cfg.aesthetic.heading_font.replace("'", "") or "Arial"
-    accent = cfg.aesthetic.palette[2] if len(cfg.aesthetic.palette) > 2 else "#FFFFFF"
     primary_bgr = _hex_to_bgr(cfg.aesthetic.palette[1] if len(cfg.aesthetic.palette) > 1 else "#FFFFFF")
     outline_bgr = _hex_to_bgr("#000000")
     back_bgr = _hex_to_bgr(cfg.aesthetic.palette[0])
@@ -399,7 +398,8 @@ async def generate(
 
         # 3. Music bed picked EARLY so we can beat-sync scene durations
         #    before normalising the stock clips to those durations.
-        from instagram_ai_agent.plugins import audio_mix, beat_sync, music as music_plugin
+        from instagram_ai_agent.plugins import audio_mix, beat_sync
+        from instagram_ai_agent.plugins import music as music_plugin
 
         bed = None
         if cfg.music.enabled:

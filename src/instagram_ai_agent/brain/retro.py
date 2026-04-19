@@ -12,7 +12,7 @@ Everything falls open — retro is an advisory context signal, never a gate.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from instagram_ai_agent.core import db
@@ -27,7 +27,7 @@ log = get_logger(__name__)
 def refresh_metrics(cl: IGClient, *, days: int = 30, limit: int = 30) -> int:
     """Update like/comment/reach on our posts from the last ``days``."""
     conn = db.get_conn()
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     rows = conn.execute(
         """
         SELECT ig_media_pk FROM posts
@@ -63,7 +63,7 @@ def refresh_metrics(cl: IGClient, *, days: int = 30, limit: int = 30) -> int:
 def top_posts(days: int = 30, limit: int = 5) -> list[dict[str, Any]]:
     """Return our top posts by engagement (likes + comments) in the window."""
     conn = db.get_conn()
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     rows = conn.execute(
         """
         SELECT ig_media_pk, format, caption, posted_at, likes, comments, reach
@@ -80,7 +80,7 @@ def top_posts(days: int = 30, limit: int = 5) -> list[dict[str, Any]]:
 def performance_by_format(days: int = 30) -> dict[str, dict[str, float]]:
     """Average likes/comments per format over the window."""
     conn = db.get_conn()
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     rows = conn.execute(
         """
         SELECT format,

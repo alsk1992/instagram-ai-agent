@@ -21,8 +21,8 @@ import functools
 import os
 import sys
 import traceback
-from typing import Any, Callable
-
+from collections.abc import Callable
+from typing import Any
 
 # Mapping of (exception_type_name, substring in error message) → friendly handler.
 # Ordered — first match wins.

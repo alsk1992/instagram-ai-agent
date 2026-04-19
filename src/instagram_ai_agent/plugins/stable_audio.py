@@ -25,8 +25,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import math
-import os
-import random
 import subprocess
 import uuid
 from dataclasses import dataclass
@@ -136,7 +134,9 @@ async def build_prompt(cfg: NicheConfig, scene_context: str = "") -> str:
     direction = direction_from_niche(cfg.niche)
     # Try LLM — short, bounded tokens, failure-tolerant.
     try:
-        from instagram_ai_agent.core.llm import generate as llm_generate  # lazy to keep this module light
+        from instagram_ai_agent.core.llm import (
+            generate as llm_generate,  # lazy to keep this module light
+        )
     except Exception:
         return direction.render()
 
@@ -179,7 +179,7 @@ def _cache_key(
     h = hashlib.sha256()
     h.update(prompt.encode("utf-8"))
     h.update(
-        f"|dur={duration_s:.2f}|seed={seed}|steps={steps}|cfg={cfg_scale:.3f}".encode("utf-8")
+        f"|dur={duration_s:.2f}|seed={seed}|steps={steps}|cfg={cfg_scale:.3f}".encode()
     )
     return h.hexdigest()[:20]
 
@@ -296,7 +296,6 @@ def _load_model(device: str) -> tuple[Any, dict[str, Any]]:
         return _MODEL_CACHE[device]
 
     try:
-        import torch
         from stable_audio_tools import get_pretrained_model
     except Exception as e:
         raise RuntimeError(
@@ -313,7 +312,7 @@ def _load_model(device: str) -> tuple[Any, dict[str, Any]]:
 
 def _synthesise_sync(
     prompt: str, duration_s: float, *, device: str, steps: int, cfg_scale: float, seed: int | None,
-) -> "object":
+) -> object:
     """Sync wrapper — invokes SAO inference and returns the float32
     waveform as a numpy-compatible array. Runs in a worker thread via
     asyncio.to_thread().
@@ -348,7 +347,7 @@ def _synthesise_sync(
     return {"wave": wave, "sample_rate": sample_rate}
 
 
-def _write_wav(wave: "object", sample_rate: int, dest: Path) -> Path:
+def _write_wav(wave: object, sample_rate: int, dest: Path) -> Path:
     """Write a (channels, samples) float32 numpy array as 16-bit PCM
     WAV. Uses torchaudio if available (already pulled by stable-audio-
     tools) and falls back to the stdlib ``wave`` module otherwise."""
@@ -365,8 +364,8 @@ def _write_wav(wave: "object", sample_rate: int, dest: Path) -> Path:
         int16 = int16.T
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
-        import torchaudio
         import torch
+        import torchaudio
         t = torch.from_numpy(int16.T if int16.ndim == 2 else int16[np.newaxis, :])
         torchaudio.save(str(dest), t, sample_rate, encoding="PCM_S", bits_per_sample=16)
     except Exception:

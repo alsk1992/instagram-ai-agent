@@ -105,7 +105,18 @@ def test_resolve_device_passes_explicit_through():
 
 
 def test_resolve_device_auto_without_torch_returns_cpu(monkeypatch):
-    # torch isn't installed; auto → cpu is the safe default
+    # Simulate torch being unavailable (CI's default) — must fall back to cpu.
+    # In dev envs where torch IS installed for Kokoro TTS we force the import
+    # to raise so the probe takes the except branch.
+    import builtins
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "torch":
+            raise ModuleNotFoundError("simulated: torch not installed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
     assert sao._resolve_device("auto") == "cpu"
 
 

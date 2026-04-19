@@ -12,7 +12,7 @@ Endpoint: ``https://en.wikipedia.org/api/rest_v1/feed/onthisday/events/MM/DD``
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -100,7 +100,7 @@ async def _filter_picks(cfg: NicheConfig, events: list[dict]) -> list[dict]:
 async def run_once(cfg: NicheConfig) -> int:
     if not cfg.wiki_otd_enabled:
         return 0
-    today = datetime.now(timezone.utc)
+    today = datetime.now(UTC)
     events = await _fetch_events(today.month, today.day)
     if not events:
         return 0

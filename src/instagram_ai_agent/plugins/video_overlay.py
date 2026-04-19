@@ -11,8 +11,8 @@ rest of the clip is untouched.
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from instagram_ai_agent.content.generators.base import staging_path
 from instagram_ai_agent.core.config import FONTS_DIR, HookOverlay, NicheConfig

@@ -127,7 +127,7 @@ def _apply_params(
             # "bad anatomy" pattern. Simpler: mark first-seen as positive.
             if not getattr(_apply_params, "_pos_set", False):
                 inputs["text"] = prompt
-                setattr(_apply_params, "_pos_set", True)
+                _apply_params._pos_set = True
             else:
                 inputs["text"] = negative or inputs.get("text", "")
     # Reset the flag for the next call

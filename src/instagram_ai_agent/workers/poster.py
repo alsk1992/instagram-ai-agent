@@ -1,7 +1,7 @@
 """Poster worker — pulls approved content and uploads it to Instagram."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from instagram_ai_agent.core import alerts, db, storage
@@ -80,7 +80,7 @@ async def post_next(
         # Surface the actual cause loudly — the default is "warmup blocks
         # posts for 7 days" which silently left users confused on first
         # run. Tell them about the IG_SKIP_WARMUP escape hatch.
-        from instagram_ai_agent.core.warmup import current_phase, current_day
+        from instagram_ai_agent.core.warmup import current_day, current_phase
         phase = current_phase()
         day = current_day()
         if cap == 0 and phase is not None and not phase.allow_posts:
@@ -312,7 +312,7 @@ def _schedule_pool(
 ) -> int:
     if per_day <= 0:
         return 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     items = [
         i for i in db.content_list(status="approved", limit=100)
         if i["format"] in pool and not i.get("scheduled_for")
@@ -325,7 +325,7 @@ def _schedule_pool(
         for day_offset in range(0, 14):
             day = after.date() + timedelta(days=day_offset)
             for h in hours:
-                candidate = datetime(day.year, day.month, day.day, h, 0, 0, tzinfo=timezone.utc)
+                candidate = datetime(day.year, day.month, day.day, h, 0, 0, tzinfo=UTC)
                 if candidate > after:
                     return candidate
         return after + timedelta(hours=1)
@@ -340,7 +340,7 @@ def _schedule_pool(
             d = slot.date()
             used = daily_used.get(d, 0)
             if used >= per_day:
-                cursor = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
+                cursor = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=UTC)
                 continue
             daily_used[d] = used + 1
             cursor = slot

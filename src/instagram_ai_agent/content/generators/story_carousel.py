@@ -20,7 +20,6 @@ Composition:
 """
 from __future__ import annotations
 
-import asyncio
 import base64
 import random
 from html import escape
@@ -31,7 +30,9 @@ import httpx
 
 from instagram_ai_agent.content.generators.base import GeneratedContent, staging_path
 from instagram_ai_agent.content.generators.playwright_render import (
-    base_css, pick_template, render_html_to_png,
+    base_css,
+    pick_template,
+    render_html_to_png,
 )
 from instagram_ai_agent.content.style import apply_lut_image
 from instagram_ai_agent.core.config import BrandCharacter, NicheConfig

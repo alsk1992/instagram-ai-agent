@@ -160,7 +160,8 @@ async def generate(cfg: NicheConfig, trend_context: str = "") -> GeneratedConten
         scene_durs = [d * (vo_dur / total) for d in scene_durs]
 
         # 2b. Fetch music + beat-sync scene boundaries before rendering clips.
-        from instagram_ai_agent.plugins import audio_mix, beat_sync, music as music_plugin
+        from instagram_ai_agent.plugins import audio_mix, beat_sync
+        from instagram_ai_agent.plugins import music as music_plugin
 
         bed = None
         if cfg.music.enabled:

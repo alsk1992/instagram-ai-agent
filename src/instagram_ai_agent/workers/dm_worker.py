@@ -10,9 +10,8 @@ contact prevent over-outreach.
 """
 from __future__ import annotations
 
-import os
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from instagram_ai_agent.core import alerts, db
 from instagram_ai_agent.core.budget import allowed
@@ -130,7 +129,7 @@ async def run_pass(cfg: NicheConfig, ig: IGClient | None = None, batch: int = 3)
 
             thread_id = cl.send_dm(str(uid), body)
             db.dm_record_message(contact["username"], "out", body, step=step, ig_thread_id=thread_id or None)
-            next_at = (datetime.now(timezone.utc) + timedelta(hours=COOLDOWN_HOURS + random.randint(-6, 6)))
+            next_at = (datetime.now(UTC) + timedelta(hours=COOLDOWN_HOURS + random.randint(-6, 6)))
             db.dm_advance(
                 contact["username"],
                 "contacted",
@@ -146,7 +145,7 @@ async def run_pass(cfg: NicheConfig, ig: IGClient | None = None, batch: int = 3)
             log.warning("dm: send failed for @%s: %s", contact["username"], e)
             db.action_log("dm", contact["username"], "failed", 0)
             # Don't advance stage on failure — retry on next pass after cooldown.
-            next_at = (datetime.now(timezone.utc) + timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            next_at = (datetime.now(UTC) + timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
             db.dm_advance(contact["username"], contact["stage"], next_after_iso=next_at)
     return sent
 
@@ -159,7 +158,7 @@ def _cooldown_ok(contact: dict) -> bool:
         last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
     except ValueError:
         return True
-    return (datetime.now(timezone.utc) - last_dt) >= timedelta(hours=COOLDOWN_HOURS - 6)
+    return (datetime.now(UTC) - last_dt) >= timedelta(hours=COOLDOWN_HOURS - 6)
 
 
 def _interleave(a: list[dict], b: list[dict]) -> list[dict]:

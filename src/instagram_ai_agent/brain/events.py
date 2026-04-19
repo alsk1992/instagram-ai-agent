@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 
@@ -102,7 +102,7 @@ def user_events(cfg: NicheConfig) -> list[Event]:
 
 # ─── Window / dedup ───
 def _today_utc() -> date:
-    return datetime.now(timezone.utc).date()
+    return datetime.now(UTC).date()
 
 
 def in_window(events: list[Event], *, today: date, days: int) -> list[Event]:

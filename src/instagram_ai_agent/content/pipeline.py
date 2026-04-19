@@ -15,27 +15,32 @@ import asyncio
 import random
 import traceback
 
-from instagram_ai_agent.content import angle_brainstorm
+from instagram_ai_agent.brain import idea_bank
+from instagram_ai_agent.brain.coverage import pick_sub_topic, record_coverage
+from instagram_ai_agent.content import angle_brainstorm, comment_bait, specificity_pass, story_arc
 from instagram_ai_agent.content import captions as caption_mod
-from instagram_ai_agent.content import comment_bait
 from instagram_ai_agent.content import critic as critic_mod
 from instagram_ai_agent.content import dedup as dedup_mod
 from instagram_ai_agent.content import hashtags as hashtag_mod
-from instagram_ai_agent.content import specificity_pass
-from instagram_ai_agent.content import story_arc
 from instagram_ai_agent.content.generators import (
     carousel as carousel_gen,
+)
+from instagram_ai_agent.content.generators import (
     format_picker,
+)
+from instagram_ai_agent.content.generators import (
     meme as meme_gen,
+)
+from instagram_ai_agent.content.generators import (
     photo as photo_gen,
+)
+from instagram_ai_agent.content.generators import (
     quote_card as quote_gen,
 )
 from instagram_ai_agent.content.generators.base import GeneratedContent
 from instagram_ai_agent.core import db
 from instagram_ai_agent.core.config import NicheConfig
 from instagram_ai_agent.core.logging_setup import get_logger
-from instagram_ai_agent.brain import idea_bank
-from instagram_ai_agent.brain.coverage import pick_sub_topic, record_coverage
 
 log = get_logger(__name__)
 

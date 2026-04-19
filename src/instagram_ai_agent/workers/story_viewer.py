@@ -78,11 +78,12 @@ def run_pass(cfg: NicheConfig, ig: IGClient | None = None, *, max_queue: int = 3
 
     # Commenters (priority 3 apiece) — re-use our own inbound_comments table
     conn = db.get_conn()
+    placeholders = ",".join("?" * len(post_pks))
     rows = conn.execute(
-        """
+        f"""
         SELECT DISTINCT user_id, username FROM inbound_comments
-        WHERE media_pk IN (%s) AND user_id IS NOT NULL AND user_id != '' AND is_own=0
-        """ % ",".join("?" * len(post_pks)),
+        WHERE media_pk IN ({placeholders}) AND user_id IS NOT NULL AND user_id != '' AND is_own=0
+        """,
         post_pks,
     ).fetchall()
     for r in rows:
