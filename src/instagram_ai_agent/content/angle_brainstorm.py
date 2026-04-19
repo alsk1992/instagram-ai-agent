@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from instagram_ai_agent.content import voice_fingerprint
 from instagram_ai_agent.core.config import NicheConfig
 from instagram_ai_agent.core.llm import generate_json
 from instagram_ai_agent.core.logging_setup import get_logger
@@ -96,6 +97,10 @@ async def brainstorm_angle(
         "or framing — not a topic. A good hook contains a number, a name, or a concrete "
         "noun. Anything that could run on 50 other accounts fails."
     )
+    # Voice fingerprint — winning hook must match the page's shipped voice,
+    # not just niche.yaml keywords. Empty on fresh accounts.
+    examples = voice_fingerprint.pick_voice_examples(n=5)
+    system += voice_fingerprint.build_voice_block(examples)
 
     prompt = f"""NICHE: {cfg.niche}
 SUB-TOPIC FOCUS: {sub_topic or "(rotate freely)"}

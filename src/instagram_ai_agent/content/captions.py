@@ -1,6 +1,7 @@
 """Caption generation — niche-voice calibrated via niche.yaml."""
 from __future__ import annotations
 
+from instagram_ai_agent.content import voice_fingerprint
 from instagram_ai_agent.core.config import NicheConfig
 from instagram_ai_agent.core.llm import generate
 
@@ -72,6 +73,11 @@ def build_system(cfg: NicheConfig, format_name: str, *, contrarian: bool = False
         base += _CONTRARIAN_BLOCK.format(
             avoid_topics=", ".join(cfg.contrarian.avoid_topics) or "none specified",
         )
+
+    # Voice fingerprint — anchor to shipped style, not keyword interpretation.
+    # Empty block on fresh accounts (<2 posts of history) → fallback to persona.
+    examples = voice_fingerprint.pick_voice_examples(n=5)
+    base += voice_fingerprint.build_voice_block(examples)
     return base
 
 
