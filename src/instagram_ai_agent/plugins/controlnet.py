@@ -144,8 +144,9 @@ def _atomic_copy(src: Path, dest: Path) -> None:
         # Best-effort cleanup if copy died mid-write
         try:
             staging.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as _cleanup_err:
+            log.debug("controlnet: post-failure cleanup of %s failed: %s",
+                      staging, _cleanup_err)
         raise
 
 

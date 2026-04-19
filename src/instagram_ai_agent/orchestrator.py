@@ -561,6 +561,7 @@ def main() -> None:
     try:
         asyncio.run(amain())
     except KeyboardInterrupt:
+        # Ctrl-C during `ig-agent run` — silent exit is the expected UX.
         pass
 
 

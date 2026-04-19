@@ -218,7 +218,8 @@ def _client_for(ep: Endpoint) -> AsyncOpenAI | None:
 
 
 class AllProvidersFailed(RuntimeError):
-    pass
+    """Raised when every provider in a task's chain has failed. The original
+    failure is chained via ``__cause__``."""
 
 
 @retry(
@@ -356,6 +357,8 @@ async def generate_json(
             try:
                 return json.loads(repaired)
             except json.JSONDecodeError:
+                # Repair attempt didn't help — fall through to the raise below
+                # which surfaces the ORIGINAL raw payload (more debuggable).
                 pass
         raise ValueError(f"LLM returned unparseable JSON: {raw[:400]!r}") from e
 

@@ -182,8 +182,9 @@ async def post_next(
     # responses. Losing them on crash = silent session drift.
     try:
         cl.persist_settings()
-    except Exception:
-        pass
+    except Exception as _persist_err:
+        log.debug("poster: persist_settings after post failed — "
+                  "rotated cookies may be lost on crash: %s", _persist_err)
 
     # Archive to R2 (no-op if unconfigured), then clean up local stage
     if storage.configured():

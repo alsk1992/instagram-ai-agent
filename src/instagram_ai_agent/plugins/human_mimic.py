@@ -62,8 +62,9 @@ def pre_post_scroll(cl: Any, *, min_items: int = 3, max_items: int = 5) -> int:
                 if pk and hasattr(cl, "media_seen"):
                     try:
                         cl.media_seen([pk])
-                    except Exception:
-                        pass
+                    except Exception as _seen_err:
+                        log.debug("human_mimic: media_seen(%s) failed — non-fatal: %s",
+                                  pk, _seen_err)
                 n_touched += 1
     except Exception as e:
         log.debug("pre_post_scroll: %s (non-fatal)", e)
@@ -76,8 +77,8 @@ def pre_post_scroll(cl: Any, *, min_items: int = 3, max_items: int = 5) -> int:
             elif hasattr(cl, "get_timeline_feed"):
                 pass  # no-op if story API isn't exposed in this instagrapi build
             time.sleep(random.uniform(1.5, 3.0))
-        except Exception:
-            pass
+        except Exception as _story_err:
+            log.debug("human_mimic: story-tray peek failed — non-fatal: %s", _story_err)
     return n_touched
 
 

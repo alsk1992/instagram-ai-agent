@@ -47,6 +47,7 @@ def send_sync(text: str, *, level: str = "info") -> bool:
             # Fire-and-forget from within an async context
             asyncio.ensure_future(send(text, level=level))
             return True
-    except RuntimeError:
-        pass
+    except RuntimeError as e:
+        # No running event loop — fall through to synchronous asyncio.run.
+        log.debug("alerts: no running loop (%s) — using asyncio.run fallback", e)
     return asyncio.run(send(text, level=level))

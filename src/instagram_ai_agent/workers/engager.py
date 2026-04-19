@@ -86,6 +86,7 @@ def run_pass(cfg: NicheConfig, ig: IGClient | None = None, batch: int = 4) -> in
     if done:
         try:
             cl.persist_settings()
-        except Exception:
-            pass
+        except Exception as _persist_err:
+            log.debug("engager: persist_settings after engagement batch failed — "
+                      "rotated cookies may be lost on crash: %s", _persist_err)
     return done

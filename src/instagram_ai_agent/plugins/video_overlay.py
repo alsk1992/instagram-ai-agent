@@ -274,8 +274,9 @@ def add_hook_overlay(
     finally:
         try:
             textfile.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as _cleanup_err:
+            log.debug("video_overlay: drawtext textfile cleanup of %s failed: %s",
+                      textfile, _cleanup_err)
 
     return dst
 

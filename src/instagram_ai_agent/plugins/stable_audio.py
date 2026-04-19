@@ -71,8 +71,9 @@ def _resolve_device(requested: str) -> str:
             return "cuda"
         if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
             return "mps"
-    except Exception:
-        pass
+    except Exception as _probe_err:
+        log.debug("stable_audio: device probe failed — defaulting to cpu: %s",
+                  _probe_err)
     return "cpu"
 
 
@@ -463,8 +464,9 @@ async def generate(
         # On any pre-replace failure, clean the staging file
         try:
             staging.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as _cleanup_err:
+            log.debug("stable_audio: staging cleanup of %s failed: %s",
+                      staging, _cleanup_err)
 
     log.info(
         "SAO: generated %s (%.1fs, prompt=%r, cached=%s)",

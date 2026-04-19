@@ -80,8 +80,8 @@ def _detect_local_license(path: Path) -> str:
                 first_line = sidecar.read_text(encoding="utf-8").strip().splitlines()
                 if first_line:
                     return first_line[0].strip()[:40]
-            except OSError:
-                pass
+            except OSError as _sidecar_err:
+                log.debug("music: sidecar read of %s failed: %s", sidecar, _sidecar_err)
     # 2. Parent-folder hint — walk up until we leave MUSIC_DIR
     for parent in path.parents:
         if parent == MUSIC_DIR.parent:

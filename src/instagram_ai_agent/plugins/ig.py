@@ -173,12 +173,14 @@ def _apply_tls_impersonation(cl: Any) -> bool:
             # Carry over cookies + headers instagrapi may have set.
             try:
                 new.cookies.update(old.cookies.get_dict() if hasattr(old.cookies, "get_dict") else dict(old.cookies))
-            except Exception:
-                pass
+            except Exception as _cookie_err:
+                log.debug("tls_impersonate: cookie copy failed for %s: %s",
+                          attr, _cookie_err)
             try:
                 new.headers.update(dict(old.headers))
-            except Exception:
-                pass
+            except Exception as _header_err:
+                log.debug("tls_impersonate: header copy failed for %s: %s",
+                          attr, _header_err)
             setattr(cl, attr, new)
         log.info("TLS impersonation active: profile=%s", profile)
         return True
@@ -283,8 +285,9 @@ class IGClient:
                 )
                 try:
                     self.session_path.unlink()
-                except OSError:
-                    pass
+                except OSError as _unlink_err:
+                    log.debug("ig: session unlink before forced refresh failed: %s",
+                              _unlink_err)
 
         # If the user pointed us at an existing instagrapi session JSON
         # (exported from another tool, or transplanted from a different
@@ -811,8 +814,9 @@ class IGClient:
             )
             try:
                 self.session_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+            except OSError as _unlink_err:
+                log.debug("ig: session unlink after LoginRequired failed: %s",
+                          _unlink_err)
             return False
         except ChallengeRequired as e:
             log.warning("keep_alive: ChallengeRequired — needs manual resolution")

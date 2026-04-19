@@ -471,8 +471,9 @@ async def generate(cfg: NicheConfig) -> GeneratedContent | None:
             for p in paths:
                 try:
                     Path(p).unlink(missing_ok=True)
-                except OSError:
-                    pass
+                except OSError as _cleanup_err:
+                    log.debug("carousel_repurpose: partial-slide cleanup of %s failed: %s",
+                              p, _cleanup_err)
             return None
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
