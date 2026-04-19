@@ -19,6 +19,12 @@ Constraints:
 - No emojis unless they earn their place — one max.
 - End with a single call-to-action pulled from: {ctas}.
 - Match the post format: {format_hint}
+
+Specificity rules (hard):
+- Every line must contain a concrete noun, number, or name. "3 mobility drills" beats "some drills".
+- BAN these phrases: pro tips, game-changer, next level, level up, unlock, secret, hack, hacks, master this, you won't believe, mind-blowing, the ultimate, the best way, crush it, grind, hustle.
+- If a sentence could run on 50 other niche accounts, rewrite it to one that couldn't.
+- Prefer lived-experience framing ("I did X for N weeks, result was Y") over prescription ("you should X").
 """
 
 

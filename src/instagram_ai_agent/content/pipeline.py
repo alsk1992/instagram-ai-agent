@@ -20,6 +20,7 @@ from instagram_ai_agent.content import captions as caption_mod
 from instagram_ai_agent.content import critic as critic_mod
 from instagram_ai_agent.content import dedup as dedup_mod
 from instagram_ai_agent.content import hashtags as hashtag_mod
+from instagram_ai_agent.content import specificity_pass
 from instagram_ai_agent.content.generators import (
     carousel as carousel_gen,
     format_picker,
@@ -283,6 +284,14 @@ async def _build_caption_candidates(
         caption_body = await caption_mod.generate_caption(
             cfg, format_name, context=content.caption_context, knowledge=knowledge,
             contrarian=contrarian,
+        )
+        # Specificity pass — rewrite generic filler to concrete detail, grounded
+        # in the same context + knowledge the caption was written from. Short-
+        # circuits internally when the draft is already clean.
+        caption_body = await specificity_pass.concretize(
+            cfg, caption_body,
+            context=content.caption_context or "",
+            knowledge=knowledge or "",
         )
         if format_name.startswith("story_"):
             tags: list[str] = []
