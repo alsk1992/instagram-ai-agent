@@ -5,7 +5,10 @@ import asyncio
 import os
 import random
 import re
+import shutil
+import subprocess
 import sys
+import webbrowser
 from pathlib import Path
 from typing import Any
 
@@ -400,6 +403,304 @@ def init(
     console.print("  3. [bold]ig-agent review[/bold]                # approve them")
     console.print("  4. [bold]ig-agent drain[/bold]                 # post NOW")
     console.print("  5. [bold]ig-agent run[/bold]                   # start the full agent")
+
+
+# ───────── one-command setup ─────────
+@app.command()
+def setup(
+    with_login: bool = typer.Option(False, "--with-login", help="Also prompt for Instagram credentials inline"),
+    minimal: bool = typer.Option(False, "--minimal", help="Take preset defaults for everything except niche name"),
+) -> None:
+    """One-command setup. Deps → niche → free AI key → seed. ~2 minutes to first post.
+
+    Replaces the 40-question ``init`` wizard with 4 questions. Everything else
+    uses preset defaults (editable later in niche.yaml). Runs ``playwright
+    install chromium`` automatically if it's missing; detects ffmpeg and prints
+    the exact install command if it's not on PATH.
+    """
+    ensure_dirs()
+
+    console.rule("[bold cyan]ig-agent setup")
+    console.print(
+        "[dim]One command — deps → niche → free AI key → done. "
+        "~2 minutes to your first generated post.[/dim]\n"
+    )
+
+    # ─── Step 1 / 4 — system deps ─────────────────────────────
+    console.print("[bold]Step 1/4[/bold] — checking system dependencies")
+    _setup_check_deps()
+
+    # ─── Step 2 / 4 — niche (preset + 4 questions) ────────────
+    console.print("\n[bold]Step 2/4[/bold] — pick your niche (4 quick questions)")
+    cfg = _setup_pick_niche(minimal=minimal)
+
+    # ─── Step 3 / 4 — free AI provider key ────────────────────
+    console.print("\n[bold]Step 3/4[/bold] — free AI provider (1 key, 30s)")
+    api_key = _setup_get_openrouter_key()
+
+    # ─── Optional — IG login (deferred by default) ────────────
+    ig_user, ig_pass = "", ""
+    if with_login:
+        console.print("\n[bold]Instagram credentials[/bold]")
+        ig_user = questionary.text("Instagram username:").ask() or ""
+        ig_pass = questionary.password("Instagram password:").ask() or ""
+
+    # ─── Step 4 / 4 — save + seed ─────────────────────────────
+    console.print("\n[bold]Step 4/4[/bold] — saving config + seeding brain")
+    save_niche(cfg)
+    console.print(f"  [green]✓[/green] niche.yaml  → {NICHE_PATH}")
+
+    env_updates = {"OPENROUTER_API_KEY": api_key}
+    if ig_user:
+        env_updates["IG_USERNAME"] = ig_user
+    if ig_pass:
+        env_updates["IG_PASSWORD"] = ig_pass
+    _write_env(env_updates)
+    console.print(f"  [green]✓[/green] .env        → {ENV_PATH}")
+
+    db.init_db()
+    console.print("  [green]✓[/green] brain.db    → initialised")
+
+    try:
+        from instagram_ai_agent.brain import idea_bank
+        n_seeded = idea_bank.seed_from_file()
+        if n_seeded > 0:
+            console.print(f"  [green]✓[/green] idea bank  → {n_seeded} archetypes seeded")
+    except Exception as e:
+        console.print(f"  [yellow]⚠[/yellow] idea-bank seed skipped: {e}")
+
+    # ─── Summary + next steps ────────────────────────────────
+    console.rule("[bold green]you're set")
+    if not ig_user:
+        console.print(
+            "[dim]Instagram login deferred — run [bold]ig-agent login[/bold] when "
+            "you're ready. You can generate + review posts without it.[/dim]\n"
+        )
+    console.print("[bold]Next:[/bold]")
+    console.print("  [bold cyan]ig-agent generate -n 3[/bold cyan]    make your first 3 posts (~2 min)")
+    console.print("  [bold cyan]ig-agent review[/bold cyan]           walk + approve each")
+    console.print("  [bold cyan]ig-agent dashboard[/bold cyan]        browse everything in a web UI")
+    console.print(
+        "\n[dim]Edit [italic]niche.yaml[/italic] anytime for deep config "
+        "(story mix, hashtag pools, safety caps, anti-detection toggles).[/dim]"
+    )
+
+
+def _setup_check_deps() -> None:
+    """Verify system deps; auto-install what we can, print the copy-paste
+    command for anything that needs elevated privileges."""
+    # Python version — already enforced by pyproject, but double-check
+    py = f"{sys.version_info.major}.{sys.version_info.minor}"
+    if sys.version_info >= (3, 11):
+        console.print(f"  [green]✓[/green] Python {py}")
+    else:
+        console.print(f"  [red]✗[/red] Python {py} — need 3.11+. Upgrade and re-run setup.")
+        raise typer.Exit(1)
+
+    # ffmpeg — can't sudo apt silently; print the exact command per OS
+    if shutil.which("ffmpeg") and shutil.which("ffprobe"):
+        console.print("  [green]✓[/green] ffmpeg + ffprobe")
+    else:
+        cmd = _ffmpeg_install_cmd()
+        console.print(f"  [red]✗[/red] ffmpeg missing — run: [bold]{cmd}[/bold]")
+        if not Confirm.ask("  Continue setup anyway? (you'll need ffmpeg before `generate`)", default=True):
+            raise typer.Exit(1)
+
+    # Playwright chromium — auto-install when missing (300MB, ~90s)
+    if _playwright_chromium_installed():
+        console.print("  [green]✓[/green] Playwright chromium")
+    else:
+        console.print("  [yellow]⚠[/yellow] Playwright chromium missing — installing (~90s)…")
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "playwright", "install", "chromium"],
+                check=True,
+            )
+            console.print("  [green]✓[/green] Playwright chromium installed")
+        except subprocess.CalledProcessError as e:
+            console.print(f"  [red]✗[/red] chromium install failed: {e}")
+            console.print("     Re-run [bold]python -m playwright install chromium[/bold] manually.")
+            raise typer.Exit(1)
+
+
+def _ffmpeg_install_cmd() -> str:
+    if sys.platform == "darwin":
+        return "brew install ffmpeg"
+    if sys.platform.startswith("linux"):
+        # Debian/Ubuntu is the common path; Arch/Fedora users can adapt.
+        return "sudo apt install ffmpeg  (or: brew install ffmpeg)"
+    if sys.platform == "win32":
+        return "winget install Gyan.FFmpeg  (or: choco install ffmpeg)"
+    return "install ffmpeg via your package manager"
+
+
+def _playwright_chromium_installed() -> bool:
+    """True when the chromium browser binary is present — fast filesystem
+    check beats invoking playwright's Python API."""
+    try:
+        from playwright._impl._driver import compute_driver_executable  # noqa: F401
+    except Exception:
+        return False
+    # Playwright drops browsers under ~/.cache/ms-playwright on Linux/macOS,
+    # %USERPROFILE%\AppData\Local\ms-playwright on Windows.
+    candidates = []
+    home = Path.home()
+    candidates.append(home / ".cache" / "ms-playwright")
+    candidates.append(home / "AppData" / "Local" / "ms-playwright")
+    candidates.append(home / "Library" / "Caches" / "ms-playwright")
+    for root in candidates:
+        if root.is_dir() and any(root.glob("chromium-*")):
+            return True
+    return False
+
+
+def _setup_pick_niche(*, minimal: bool) -> NicheConfig:
+    from instagram_ai_agent.niche_presets import PRESETS, by_key
+
+    preset_choices = [f"{p.key} — {p.label}" for p in PRESETS] + ["custom (blank defaults)"]
+    preset_label = questionary.select("Starter preset:", choices=preset_choices).ask()
+    if preset_label is None:
+        raise typer.Exit(1)
+    preset_key = preset_label.split(" — ")[0] if "—" in preset_label else None
+    preset = by_key(preset_key) if preset_key else None
+
+    niche = questionary.text(
+        "Niche (what this page is about):",
+        default=preset.niche if preset else "",
+        validate=lambda x: len(x.strip()) >= 3 or "Minimum 3 chars",
+    ).ask()
+    if niche is None:
+        raise typer.Exit(1)
+
+    if minimal:
+        sub_topics = list(preset.sub_topics) if preset else [niche.strip()]
+        audience = preset.target_audience if preset else f"people interested in {niche}"
+        persona = preset.persona if preset else f"writer covering {niche}, direct no-nonsense voice"
+    else:
+        sub_topics = _split(
+            questionary.text(
+                "Sub-topics (comma-separated):",
+                default=", ".join(preset.sub_topics) if preset else "",
+            ).ask() or ""
+        )
+        if not sub_topics:
+            sub_topics = [niche.strip()]
+        audience = questionary.text(
+            "Target audience (who it's for):",
+            default=preset.target_audience if preset else "",
+            validate=lambda x: len(x.strip()) >= 5 or "Minimum 5 chars",
+        ).ask() or (preset.target_audience if preset else niche)
+        persona = questionary.text(
+            "One-sentence persona (who's writing these posts?):",
+            default=preset.persona if preset else "",
+            validate=lambda x: len(x.strip()) >= 10 or "Give a proper sentence",
+        ).ask() or (preset.persona if preset else f"writer covering {niche}")
+
+    # Everything else uses preset or sensible defaults — editable in niche.yaml
+    tone = list(preset.voice_tone) if preset else ["direct"]
+    forbidden = list(preset.voice_forbidden) if preset else []
+    palette = list(preset.palette) if preset else ["#0a0a0a", "#f5f5f0", "#c9a961"]
+    core_tags = list(preset.core_hashtags) if preset else [
+        niche.replace(" ", "").lower()[:20], "instagram", "content",
+    ]
+    # HashtagPools requires >=3 core items
+    while len(core_tags) < 3:
+        core_tags.append(f"niche{len(core_tags)}")
+    growth_tags = list(preset.growth_hashtags) if preset else []
+    best_hours = list(preset.best_hours_utc) if preset else [14, 18, 21]
+
+    if preset and preset.format_weights:
+        formats = FormatMix(**preset.format_weights)
+    else:
+        formats = FormatMix()
+
+    cfg = NicheConfig(
+        niche=niche.strip(),
+        sub_topics=sub_topics,
+        target_audience=audience.strip(),
+        commercial=True,
+        voice=Voice(
+            tone=tone,
+            forbidden=forbidden,
+            persona=persona.strip(),
+            cta_styles=["save for later", "tag a mate", "follow for more"],
+        ),
+        aesthetic=Aesthetic(
+            palette=palette,
+            heading_font="Archivo Black",
+            body_font="Inter",
+            watermark=None,
+        ),
+        hashtags=HashtagPools(core=core_tags, growth=growth_tags, long_tail=[], per_post=15),
+        formats=formats,
+        stories=StoryMix(),
+        schedule=Schedule(posts_per_day=1, stories_per_day=3, best_hours_utc=best_hours),
+        safety=Safety(require_review=True),
+    )
+    return cfg
+
+
+def _setup_get_openrouter_key() -> str:
+    """Browser-open flow for OpenRouter free-tier key + live validation."""
+    url = "https://openrouter.ai/keys"
+    console.print(f"  Opening [bold]{url}[/bold] — sign in, click [bold]Create key[/bold].")
+    console.print(
+        "  [dim](OpenRouter ships free-tier models that work out of the box. "
+        "Sign-in is Google/GitHub — no credit card.)[/dim]"
+    )
+
+    try:
+        webbrowser.open(url, new=2)
+    except Exception:
+        console.print(f"  [yellow]⚠[/yellow] Couldn't auto-open a browser — visit {url} manually.")
+
+    for attempt in range(3):
+        key = questionary.password("  Paste your OpenRouter key:").ask() or ""
+        key = key.strip()
+        if not key:
+            if attempt < 2 and Confirm.ask("  Empty key — try again?", default=True):
+                continue
+            console.print("  [yellow]⚠[/yellow] Continuing without a key — add it to .env before `generate`.")
+            return ""
+
+        if not (key.startswith("sk-or-") or key.startswith("sk-")):
+            console.print("  [yellow]⚠[/yellow] That doesn't look like an OpenRouter key (expected sk-or-…).")
+            if not Confirm.ask("  Save it anyway?", default=False):
+                continue
+
+        # Live ping — ensures the key works before the user exits setup
+        ok, msg = _validate_openrouter_key(key)
+        if ok:
+            console.print(f"  [green]✓[/green] Key validated — {msg}")
+            return key
+        console.print(f"  [red]✗[/red] Key rejected — {msg}")
+        if attempt < 2 and Confirm.ask("  Try a different key?", default=True):
+            continue
+        break
+
+    console.print("  [yellow]⚠[/yellow] Proceeding without a validated key — you can edit .env later.")
+    return ""
+
+
+def _validate_openrouter_key(key: str) -> tuple[bool, str]:
+    try:
+        import httpx
+        r = httpx.get(
+            "https://openrouter.ai/api/v1/models",
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=10.0,
+        )
+    except Exception as e:
+        return False, f"network error: {e}"
+    if r.status_code == 200:
+        try:
+            n_models = len(r.json().get("data", []))
+        except Exception:
+            n_models = 0
+        return True, f"{n_models} models available"
+    if r.status_code in (401, 403):
+        return False, "invalid key (401/403)"
+    return False, f"HTTP {r.status_code}"
 
 
 def _is_int_in(lo: int, hi: int):

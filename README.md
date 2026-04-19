@@ -28,50 +28,61 @@ _43-second walkthrough — real `ig-agent doctor`, `status`, `warmup-status` run
 
 ## 🚀 Quickstart
 
-Pick whichever install path matches how technical you feel today.
-
-### Option A — `pipx` (simplest, cross-platform)
-
-If you have Python 3.11+ and ffmpeg already:
+**Two commands. ~2 minutes to your first generated post.**
 
 ```bash
 pipx install git+https://github.com/alsk1992/instagram-ai-agent.git
-playwright install chromium
-ig-agent init
+ig-agent setup
 ```
 
-That's it. `pipx` handles the isolated venv automatically — no `source`, no `.venv` folder to manage, `ig-agent` just works from any directory. Works identically on macOS, Linux, Windows (WSL2 or native).
+That's the whole thing. `setup` auto-installs Playwright chromium, picks a niche from 8 starter presets (fitness / food / travel / finance / mindfulness / productivity / fashion / pets), opens your browser to grab a free OpenRouter API key, validates it live, seeds the idea-bank with 90 proven hook archetypes, and drops you at:
 
-No `pipx` yet? Install it first: `python -m pip install --user pipx && pipx ensurepath`.
+```bash
+ig-agent generate -n 3    # make your first 3 posts (~2 min)
+ig-agent review           # walk + approve each
+ig-agent dashboard        # browse everything in a web UI on :8080
+```
 
-### Option B — one-line installer (also auto-installs ffmpeg hints)
+Then `ig-agent login` when you're ready to connect Instagram and post them.
 
-If you don't have Python or ffmpeg set up, or you want a local dev clone:
+<details>
+<summary><strong>Prerequisites</strong> — what you need on the machine before `pipx install`</summary>
 
+- **Python 3.11+** — macOS: `brew install python@3.12` · Ubuntu: `sudo apt install python3.12` · Windows: [python.org](https://www.python.org/downloads/)
+- **ffmpeg** — macOS: `brew install ffmpeg` · Ubuntu: `sudo apt install ffmpeg` · Windows: `winget install Gyan.FFmpeg`
+- **pipx** — `python -m pip install --user pipx && pipx ensurepath`
+
+`ig-agent setup` will check all three and print the exact install command for anything missing.
+
+</details>
+
+<details>
+<summary><strong>Alternative installs</strong> — source clone, bash one-liner, Windows PowerShell, Makefile</summary>
+
+One-line POSIX installer (clones the repo + installs everything):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/alsk1992/instagram-ai-agent/main/install.sh | bash
 ```
 
-Checks Python 3.11+ and ffmpeg, clones the repo, sets up `.venv`, installs deps, downloads Playwright chromium + fonts.
-
-### Then (both paths)
-
-```bash
-ig-agent init              # 1. interactive wizard → niche.yaml + .env
-ig-agent login             # 2. verify Instagram credentials
-ig-agent generate -n 3     # 3. generate 3 posts into the queue
-ig-agent review            # 4. approve / reject them
-ig-agent drain             # 5. post the batch NOW (first-post proof)
-ig-agent run               # 6. start the full agent — long-running
-
-ig-agent doctor            # any time — diagnostic self-check
+Windows PowerShell:
+```powershell
+irm https://raw.githubusercontent.com/alsk1992/instagram-ai-agent/main/install.ps1 | iex
 ```
 
-Prefer `make`? `make install && make init && make login && make run`.
+From source: `git clone … && cd instagram-ai-agent && make install && make setup`
 
-> **First-time user?** Jump to the [Safety section](#%EF%B8%8F-safety--anti-detection) before step 2 — pasting browser cookies in `.env` avoids IG's email-code challenge on fresh VPS installs.
->
-> **Account already has post history?** Set `IG_SKIP_WARMUP=1` in `.env`. Otherwise the 14-day warmup ramp blocks ALL posts for the first 7 days on fresh accounts (by design — this is the single biggest ban-avoidance lever). A brand-new account should leave it on and not touch posts until day 8.
+For deep configuration (story mix, hashtag pools, anti-detection toggles), use `ig-agent init` — the 40-question advanced wizard.
+
+</details>
+
+<details>
+<summary><strong>First-time Instagram setup</strong> — warmup, cookies, email-code challenges</summary>
+
+- **Brand-new account?** Leave `IG_SKIP_WARMUP` off. The 14-day warmup ramp blocks ALL posts for the first 7 days by design — the single biggest ban-avoidance lever.
+- **Account with history?** Set `IG_SKIP_WARMUP=1` in `.env` to post immediately.
+- **Fresh VPS or new IP?** Paste browser cookies into `.env` (see [Safety section](#%EF%B8%8F-safety--anti-detection)) so IG skips the email-code challenge.
+
+</details>
 
 ---
 
