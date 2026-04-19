@@ -934,10 +934,28 @@ class IGClient:
 
 
 def _enter_cooldown(reason: str, hours: int) -> None:
-    """Record a global backoff state. Orchestrator checks this before acting."""
+    """Record a global backoff state. Orchestrator checks this before acting.
+
+    Sends an alert on every cooldown ENTRY (skipped when we're already in
+    cooldown — don't spam the user on repeat attempts that re-enter). The
+    alert path is fire-and-forget; if no channel is configured it's a no-op.
+    """
     from datetime import datetime, timedelta, timezone
 
+    already = db.state_get("backoff_until")
     until = (datetime.now(timezone.utc) + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
     db.state_set("backoff_until", until)
     db.state_set("backoff_reason", reason)
     log.error("Entering cooldown: %s (until %s)", reason, until)
+
+    # Alert on NEW cooldowns only — don't spam on repeat-attempt re-entry.
+    if not already or already < datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"):
+        try:
+            from instagram_ai_agent.core import alerts as _alerts
+            _alerts.send_sync(
+                f"🛑 Agent entered {hours}h cooldown: {reason}. "
+                f"All IG writes paused until {until}.",
+                level="err",
+            )
+        except Exception as _alert_err:
+            log.debug("cooldown alert failed: %s", _alert_err)

@@ -1347,11 +1347,46 @@ def post() -> None:
 # ───────── status ─────────
 @app.command()
 def status() -> None:
-    """Print queue depth, last post, health, backoff."""
+    """Print queue depth, next scheduled posts, orchestrator heartbeat, backoff, pause state."""
     load_env()
     db.init_db()
     cfg = _require_niche()
 
+    # ─── Agent pulse ─────────────────────────────────────────
+    from datetime import datetime, timezone
+    paused = (db.state_get("paused") or "").lower() in ("1", "true", "yes")
+    last_beat = db.state_get("last_heartbeat")
+    beat_line = "[dim]never[/dim]"
+    if last_beat:
+        try:
+            beat_dt = datetime.fromisoformat(last_beat.replace("Z", "+00:00"))
+            age_min = (datetime.now(timezone.utc) - beat_dt).total_seconds() / 60
+            if age_min < 5:
+                beat_line = f"[green]{age_min:.1f} min ago[/green]"
+            elif age_min < 60:
+                beat_line = f"[yellow]{age_min:.0f} min ago[/yellow]"
+            else:
+                beat_line = f"[red]{age_min / 60:.1f} h ago — orchestrator may be down[/red]"
+        except Exception:
+            beat_line = last_beat
+
+    header = Table.grid(padding=(0, 2))
+    header.add_column()
+    header.add_column()
+    header.add_row("[bold]agent:[/bold]",
+                   "[red]PAUSED[/red]" if paused else "[green]active[/green]")
+    header.add_row("[bold]heartbeat:[/bold]", beat_line)
+    until = db.state_get("backoff_until")
+    if until:
+        reason = db.state_get("backoff_reason") or ""
+        header.add_row("[bold]backoff:[/bold]",
+                       f"[yellow]until {until}[/yellow] [dim]({reason})[/dim]")
+    header.add_row("[bold]niche:[/bold]", cfg.niche)
+    header.add_row("[bold]providers:[/bold]", ", ".join(providers_configured()) or "[red]none[/red]")
+    console.print(header)
+    console.print()
+
+    # ─── Queue ─────────────────────────────────────────
     by_status = {}
     for row in db.content_list(status=None, limit=500):
         by_status[row["status"]] = by_status.get(row["status"], 0) + 1
@@ -1363,6 +1398,47 @@ def status() -> None:
         table.add_row(k, str(v))
     console.print(table)
 
+    # ─── Next scheduled posts ─────────────────────────
+    approved = db.content_list(status="approved", limit=50)
+    upcoming = sorted(
+        [r for r in approved if r.get("scheduled_for")],
+        key=lambda r: r["scheduled_for"] or "",
+    )[:3]
+    if upcoming:
+        nxt = Table(title="next 3 scheduled posts")
+        nxt.add_column("scheduled_for", style="cyan")
+        nxt.add_column("format")
+        nxt.add_column("caption preview")
+        for r in upcoming:
+            preview = (r.get("caption") or "").split("\n")[0][:50]
+            nxt.add_row(r["scheduled_for"] or "?", r["format"], preview)
+        console.print(nxt)
+    elif by_status.get("approved", 0):
+        console.print(
+            "[dim]Approved items present but not yet scheduled. "
+            "They'll slot in on the next orchestrator scheduling tick.[/dim]"
+        )
+
+    # ─── Recent actions (last 35 min) ─────────────────
+    try:
+        recent = dict(
+            db.get_conn().execute(
+                "SELECT action, COUNT(*) c FROM action_log "
+                "WHERE at >= datetime('now', '-35 minutes') "
+                "GROUP BY action ORDER BY c DESC LIMIT 8"
+            ).fetchall()
+        )
+    except Exception:
+        recent = {}
+    if recent:
+        r_tbl = Table(title="actions in the last 35 min")
+        r_tbl.add_column("action", style="cyan")
+        r_tbl.add_column("count", justify="right")
+        for k, v in recent.items():
+            r_tbl.add_row(str(k), str(v))
+        console.print(r_tbl)
+
+    # ─── Health ─────────────────────────────────────────
     latest = db.health_latest()
     if latest:
         h = Table(title="latest health snapshot")
@@ -1377,13 +1453,41 @@ def status() -> None:
         )
         console.print(h)
 
-    until = db.state_get("backoff_until")
-    if until:
-        console.print(f"[yellow]backoff_until:[/yellow] {until} ({db.state_get('backoff_reason') or ''})")
+    if paused:
+        console.print(
+            "\n[dim]Agent is paused — run [bold cyan]ig-agent resume[/bold cyan] to continue.[/dim]"
+        )
 
-    console.print(f"[dim]niche:[/dim] {cfg.niche}")
-    console.print(f"[dim]formats:[/dim] {cfg.formats.normalized()}")
-    console.print(f"[dim]providers:[/dim] {providers_configured()}")
+
+# ───────── pause / resume ─────────
+@app.command("pause")
+def pause_cmd() -> None:
+    """Halt all IG writes + content generation. Brain + monitoring keep running.
+
+    Used for: weekend pauses, debugging, temporary stop without killing the
+    orchestrator process. Use ``ig-agent resume`` to re-enable."""
+    load_env()
+    db.init_db()
+    db.state_set("paused", "1")
+    console.print("[yellow]⏸[/yellow]  Agent paused — all IG writes + generation halted.")
+    console.print(
+        "  [dim]Brain modules (trend miner, RAG index, etc.) keep running "
+        "so the queue is ready when you resume.[/dim]\n"
+        "  Resume: [bold cyan]ig-agent resume[/bold cyan]"
+    )
+
+
+@app.command("resume")
+def resume_cmd() -> None:
+    """Clear the pause state — orchestrator resumes on the next tick."""
+    load_env()
+    db.init_db()
+    was_paused = (db.state_get("paused") or "").lower() in ("1", "true", "yes")
+    db.state_set("paused", "0")
+    if was_paused:
+        console.print("[green]▶[/green]  Agent resumed — IG writes + generation re-enabled.")
+    else:
+        console.print("[dim]Already running — no change.[/dim]")
 
 
 # ───────── add-content (manual upload) ─────────

@@ -59,6 +59,14 @@ from instagram_ai_agent.workers import (
 log = setup_logging(logfile=ROOT / "logs" / "orchestrator.log")
 
 
+def _paused() -> bool:
+    """True when the user has called ``ig-agent pause`` — halts every
+    IG-writing and content-generation job. ``ig-agent resume`` clears it.
+    Brain-only jobs (trend miner, rag index, etc.) keep running so the
+    queue is ready to flow the moment the pause is lifted."""
+    return (db.state_get("paused") or "").lower() in ("1", "true", "yes")
+
+
 class Orchestrator:
     def __init__(self, cfg: NicheConfig):
         self.cfg = cfg
@@ -68,6 +76,9 @@ class Orchestrator:
 
     # ─── jobs ───
     async def job_generate(self) -> None:
+        if _paused():
+            log.debug("job_generate skipped — agent paused")
+            return
         try:
             cid = await content_pipeline.generate_one(self.cfg)
             if cid is not None and not self.cfg.safety.require_review:
@@ -78,7 +89,31 @@ class Orchestrator:
             log.exception("job_generate failed")
             await alerts.send(f"Generator cycle failed: {e}", level="err")
 
+    async def job_heartbeat(self) -> None:
+        """Periodic liveness signal so status + dashboard can show
+        'agent alive, doing X' instead of a black-box silence."""
+        try:
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            db.state_set("last_heartbeat", now)
+            # Snapshot recent activity since last heartbeat
+            conn = db.get_conn()
+            counts = dict(
+                conn.execute(
+                    "SELECT action, COUNT(*) AS n FROM action_log "
+                    "WHERE at >= datetime('now', '-35 minutes') "
+                    "GROUP BY action"
+                ).fetchall()
+            ) if True else {}
+            summary = ", ".join(f"{k}:{v}" for k, v in sorted(counts.items()) if k != "heartbeat") or "idle"
+            db.action_log("heartbeat", None, "ok", 0)
+            log.info("heartbeat · %s · paused=%s", summary, _paused())
+        except Exception as e:
+            log.debug("heartbeat failed: %s", e)
+
     async def job_post(self) -> None:
+        if _paused():
+            return
         try:
             await poster.post_next(self.cfg, ig=self.ig)
         except Exception as e:
@@ -86,6 +121,8 @@ class Orchestrator:
             await alerts.send(f"Post cycle failed: {e}", level="err")
 
     async def job_post_story(self) -> None:
+        if _paused():
+            return
         try:
             await story_poster.post_next(self.cfg, ig=self.ig)
         except Exception as e:
@@ -93,6 +130,8 @@ class Orchestrator:
             await alerts.send(f"Story post cycle failed: {e}", level="err")
 
     def job_engage(self) -> None:
+        if _paused():
+            return
         try:
             engager.run_pass(self.cfg, ig=self.ig)
         except Exception as e:
@@ -455,6 +494,16 @@ class Orchestrator:
             max_instances=1,
             coalesce=True,
         )
+        # Heartbeat: every 30 min — writes last_heartbeat + logs a summary of
+        # recent actions so `ig-agent status` and the dashboard can show
+        # "agent alive, doing X" instead of black-box silence.
+        self.scheduler.add_job(
+            self.job_heartbeat,
+            IntervalTrigger(minutes=30),
+            id="heartbeat",
+            max_instances=1,
+            coalesce=True,
+        )
         self.scheduler.start()
         log.info(
             "Orchestrator started. niche=%s commercial=%s formats=%s providers=%s",
@@ -485,6 +534,9 @@ class Orchestrator:
 
     async def run_forever(self) -> None:
         self.start()
+        # Kick heartbeat once so `ig-agent status` can see the orchestrator
+        # is alive within seconds — don't make the user wait 30 min.
+        asyncio.create_task(self.job_heartbeat())
         # Light "kick" jobs at startup so we don't wait for the first interval
         asyncio.create_task(self.job_trends())
         # Kick events at startup so a themed day reaches context immediately
