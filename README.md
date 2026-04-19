@@ -18,7 +18,7 @@ _43-second walkthrough — real `ig-agent doctor`, `status`, `warmup-status` run
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-748%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-819%20passing-brightgreen)](tests/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/alsk1992/instagram-ai-agent)
 
@@ -123,15 +123,21 @@ For deep configuration (story mix, hashtag pools, anti-detection toggles), use `
 ### What it posts
 - **Memes** — image with bold overlay text, the classic fast-scroll stopper
 - **Quote cards** — designed single-slide cards with a memorable line
-- **Carousels** — multi-slide posts that tell a story (hook → point → point → CTA)
+- **Carousels** — multi-slide posts that tell a story (hook → point → point → CTA) — 7 layout variants so 30 carousels don't share the same visual
 - **Reels from stock** — short videos cut from free stock footage, voiced over
 - **Reels from AI** — fully AI-generated short videos
-- **Photos + AI portraits** — image posts, optionally with a consistent "face" across every post
+- **Photos + AI portraits** — image posts, optionally with a consistent "face" across every post (brand-character seed locks on first gen, same person appears forever)
 - **Stories** — quote, announcement, photo, video (the ephemeral 24h ones)
 - **Narrative carousels** — same character across all slides
 - **Hot takes / contrarian posts** — contrarian angle for engagement spikes
 - **Auto-beat-synced cuts** — reels cut on the music's beat
 - **Karaoke subtitles** — word-level captions appear on every reel
+
+### Visual realness
+- **Film emulation**: grain + vignette + subtle colour cast + phone-compression artifacts applied to every AI image — kills the sterile "AI look" at the pixel level
+- **Composition rotation**: photo prompts rotate through 7 framing rules (rule-of-thirds, left-third negative space, over-the-shoulder, low-angle, etc.) so the feed isn't centre-framed every post
+- **Brand character lock**: when you enable human_photo, the SAME face appears across every post (not a weekly cast rotation)
+- **LUT grading** (optional): drop a `.cube` file in `data/luts/`, every image + video gets it — one colour signature across the feed
 
 </td>
 <td width="50%" valign="top">
@@ -142,6 +148,8 @@ For deep configuration (story mix, hashtag pools, anti-detection toggles), use `
 - **Niche RAG**: drops PDFs/markdown into `data/knowledge/`, agent cites it
 - **Trend miner**: scrapes competitor + hashtag feeds, feeds the generator
 - **Reddit question harvester**: turns "what the community is asking" into content
+- **HackerNews + Dev.to trend feeds**: keyless, always-on tech/startup trend signal
+- **Wikipedia On This Day**: anniversary-triggered content seeds for "did you know" posts
 - **Event calendar**: Nager.Date holidays + user dates → seasonal posts
 - **Critic 3.0**: 8-dimension rubric with save_potential weighted 3× (matches Instagram's 2026 algorithm weighting — saves drive reach, not likes)
 - **Genius-tier pre-stages**: every post passes through angle brainstorm (15 candidates → winning hook), slide-1 hook optimiser (8 scroll-stop variants), specificity rewrite (strips "pro tips / game-changer" filler), story-arc enforcer (prescriptive → lived-experience), voice fingerprint (shipped-caption few-shot), comment-bait CTA engineer (binary-pick / number-drop / emoji-react patterns)
@@ -187,15 +195,25 @@ For deep configuration (story mix, hashtag pools, anti-detection toggles), use `
 - **Stable Audio Open Small**: commercial-safe generative music beds
 - **Real-ESRGAN + GFPGAN finish pass**: 2x upscale + face restoration
 
+### Free-tier media sources (no API key required)
+- **Pollinations**: unlimited AI image generation
+- **Openverse**: 800M+ CC/PD images with commercial-licence filtering + auto-attribution
+- **Wikimedia / Public-domain archives**: via Openverse aggregator
+- **Kokoro-82M**: Apache-2.0 local TTS for narration
+- **edge-tts**: 400+ Microsoft Edge voices, keyless
+- **HackerNews Algolia / Dev.to / Wikipedia OTD**: keyless trend + content seeds
+
 </td>
 <td width="50%" valign="top">
 
 ### Dev experience
-- **One-line installer** (POSIX, idempotent)
-- **Typer CLI**: `ig-agent` with `init / login / run / review / generate / status / dashboard / lora / controlnet`
-- **Makefile shortcuts**: `make install / init / run / test / dashboard`
-- **Local read-only dashboard**: `make dashboard` → `http://127.0.0.1:8080`
-- **748 tests**, 0 import failures across 90+ modules
+- **One-command setup**: `ig-agent setup` (4 questions, ~2 min) — quick mode by default, `--full` for deep customisation
+- **Typer CLI**: `setup / login / run / pause / resume / status / doctor / generate / review / dashboard / ...`
+- **Makefile shortcuts**: `make setup / run / status / pause / resume / dashboard`
+- **Dashboard with one-click approval**: `/review` page + POST approve/reject endpoints
+- **Self-healing doctor**: `ig-agent doctor` with brain.db integrity check + Playwright install autoprobe
+- **Log rotation**: orchestrator.log caps at 50MB × 5 backups
+- **819 tests**, 0 import failures across 90+ modules
 - **Commercial-licence gates baked in**: FLUX.1-dev, OpenPose, StoryDiffusion code all blocked under `commercial=True`
 
 </td>
@@ -306,6 +324,7 @@ aesthetic:
   heading_font: "Archivo Black"
   body_font: "Inter"
   watermark: "@dadpilled"
+  film_strength: medium              # off | subtle | medium | strong — kills the AI sheen
 
 hashtags:
   core: [calisthenics, homeworkout, bodyweighttraining]
