@@ -412,6 +412,7 @@ def setup(
     minimal: bool = typer.Option(False, "--minimal", help="Take preset defaults for everything except niche name"),
     with_login: bool = typer.Option(False, "--with-login", help="Also prompt for Instagram credentials inline"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing niche.yaml without asking"),
+    review: bool = typer.Option(False, "--review", help="Opt-in guardrail: queue each post for one-click approval at /review before it goes live. Default is fully autonomous."),
 ) -> None:
     """One-command setup. Two paths:
 
@@ -472,6 +473,20 @@ def setup(
     # ─── Step 2 — niche ───────────────────────────────────────
     console.print(f"\n[bold]Step 2/{n_steps}[/bold] — pick your niche")
     cfg = _setup_pick_niche(minimal=minimal)
+
+    # Autonomy — the default. Posts go live when they pass the critic, no
+    # human gate. --review opts into the training-wheels guardrail (queue +
+    # one-click approval at /review) for users who want to see every post
+    # before it goes live.
+    cfg = cfg.model_copy(update={"safety": Safety(require_review=review)})
+    if review:
+        console.print(
+            "  [dim]🛟 review guardrail ON — posts queue at /review for approval.[/dim]"
+        )
+    else:
+        console.print(
+            "  [dim]⚡ fully autonomous — posts go live when they pass the critic.[/dim]"
+        )
 
     # ─── Step 3 (full only) — customisation ───────────────────
     step_num = 2
@@ -885,7 +900,7 @@ def _setup_pick_niche(*, minimal: bool) -> NicheConfig:
         formats=formats,
         stories=StoryMix(),
         schedule=Schedule(posts_per_day=1, stories_per_day=3, best_hours_utc=best_hours),
-        safety=Safety(require_review=True),
+        safety=Safety(require_review=False),  # overridden in setup() based on --review flag
     )
     return cfg
 

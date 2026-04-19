@@ -77,7 +77,9 @@ def test_setup_pick_niche_minimal_mode(tmp_root, monkeypatch):
     assert cfg.sub_topics  # preset filled
     assert len(cfg.hashtags.core) >= 3
     assert cfg.commercial is True  # sensible default
-    assert cfg.safety.require_review is True  # sensible default — always review first
+    # _setup_pick_niche itself writes require_review=False; the outer `setup`
+    # command flips it to True when --review is passed.
+    assert cfg.safety.require_review is False
 
 
 # ─── _setup_pick_niche with custom preset falls back to placeholder tags ───
@@ -383,3 +385,59 @@ def test_existing_env_keys_parses_existing_file(tmp_root):
 
 def test_existing_env_keys_empty_when_no_file(tmp_root):
     assert cli._existing_env_keys() == set()
+
+
+# ─── autonomy default + --review opt-in ───
+def _setup_harness(monkeypatch):
+    """Shared stubs for end-to-end setup invocations."""
+    import httpx
+    import questionary
+    import webbrowser
+    from rich import prompt as rp
+
+    monkeypatch.setattr(cli, "_setup_check_deps", lambda: None)
+    monkeypatch.setattr(rp.Confirm, "ask", classmethod(lambda cls, *a, **k: True))
+
+    def fake_select(prompt, choices, **kw):
+        return type("Q", (), {"ask": lambda s: "fitness — Fitness & calisthenics"})()
+
+    def fake_text(prompt, default="", **kw):
+        return type("Q", (), {"ask": lambda s: default or "home calisthenics"})()
+
+    def fake_password(prompt, **kw):
+        return type("Q", (), {"ask": lambda s: "sk-or-v1-TESTKEY"})()
+
+    class FakeResponse:
+        status_code = 200
+        def json(self): return {"data": [{"id": "m"}]}
+
+    monkeypatch.setattr(questionary, "select", fake_select)
+    monkeypatch.setattr(questionary, "text", fake_text)
+    monkeypatch.setattr(questionary, "password", fake_password)
+    monkeypatch.setattr(webbrowser, "open", lambda *a, **k: True)
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: FakeResponse())
+
+
+def test_setup_default_is_fully_autonomous(tmp_root, monkeypatch):
+    """Default setup writes safety.require_review=False — the daemon posts on
+    its own without human approval. This is the core autonomy promise."""
+    _setup_harness(monkeypatch)
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["setup", "--minimal", "--force"])
+    assert result.exit_code == 0, result.output
+    assert "fully autonomous" in result.output
+
+    saved = cfg_mod.load_niche()
+    assert saved.safety.require_review is False
+
+
+def test_setup_review_flag_opts_into_approval_gate(tmp_root, monkeypatch):
+    """--review opts into the training-wheels guardrail."""
+    _setup_harness(monkeypatch)
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["setup", "--minimal", "--review", "--force"])
+    assert result.exit_code == 0, result.output
+    assert "review guardrail" in result.output.lower()
+
+    saved = cfg_mod.load_niche()
+    assert saved.safety.require_review is True

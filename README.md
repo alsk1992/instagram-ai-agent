@@ -4,9 +4,9 @@
 
 **An AI that runs your Instagram page for you.**
 
-Tell it what your page is about. It writes the posts, designs the images, writes the captions, posts on schedule, replies to comments, and follows the best practices that keep accounts from getting banned. You review posts before they go live.
+Tell it what your page is about. Run three commands. Walk away. It writes the posts, designs the images, writes the captions, posts on schedule, replies to comments, and follows the best practices that keep accounts from getting banned.
 
-Free to run on free-tier AI models. Runs on your own laptop or a $5/month server. No subscription.
+Fully autonomous by default. Optional one-click review guardrail for the first week if you want to eyeball posts before they go live. Free to run on free-tier AI models. Runs on your own laptop or a $5/month server. No subscription.
 
 
 
@@ -30,24 +30,48 @@ _43-second walkthrough — real `ig-agent doctor`, `status`, `warmup-status` run
 
 ## 🚀 Quickstart
 
-**Two commands. ~2 minutes to your first generated post.**
+**Three commands. Then walk away — it's fully autonomous.**
 
 ```bash
 pipx install git+https://github.com/alsk1992/instagram-ai-agent.git
-ig-agent setup
+ig-agent setup           # 4 questions, ~2 min — writes niche.yaml + .env
+ig-agent login           # connect your Instagram account
+ig-agent run             # ← THE daemon. Runs forever. Generates + posts. Walk away.
 ```
 
-That's the whole thing. `setup` auto-installs Playwright chromium, picks a niche from 8 starter presets (fitness / food / travel / finance / mindfulness / productivity / fashion / pets), opens your browser to grab a free OpenRouter API key, validates it live, seeds the idea-bank with 90 proven hook archetypes, and drops you at:
+`ig-agent run` is the agent. It generates posts on a schedule, posts them live, replies to comments, follows back niche-aligned accounts, handles the 14-day warmup ramp, backs off on rate limits, refreshes sessions. No further commands needed. Leave it in `tmux` / `screen` / `systemd` on a VPS and close the laptop.
+
+### Cautious first week (opt-in)
+
+If you'd rather eyeball the first 20-30 posts before handing over the keys, run setup with `--review`:
 
 ```bash
-ig-agent generate -n 3    # make your first 3 posts (~2 min)
-ig-agent dashboard        # open http://127.0.0.1:8080 — approve posts visually
-ig-agent drain            # post the approved ones right now (once IG is connected)
+ig-agent setup --review
 ```
 
-Prefer the terminal? `ig-agent review` walks you through each pending post. Something off? `ig-agent doctor` diagnoses your setup in 3 seconds.
+Now the daemon still generates + schedules autonomously but queues each post for one-click approval at `http://127.0.0.1:8080/review` before it goes live. Flip it off any time by editing `niche.yaml` (`safety.require_review: false`).
 
-`ig-agent login` connects your Instagram account when you're ready to actually post.
+### Checking in
+
+The daemon runs itself — these are for peace of mind, not required.
+
+```bash
+ig-agent status          # pulse: heartbeat, backoff, next scheduled posts, recent actions
+ig-agent dashboard       # same data in a browser on :8080
+ig-agent pause           # weekend stop without killing the daemon
+ig-agent resume          # back on
+ig-agent doctor          # diagnose in 3 seconds when something feels off
+```
+
+### Testing the pipeline without the daemon
+
+Before committing to a long run, you can fire the content pipeline once and inspect:
+
+```bash
+ig-agent generate -n 3   # generate 3 posts now
+ig-agent dashboard       # approve in the browser
+ig-agent drain           # post the approved batch immediately (first-post proof)
+```
 
 <details>
 <summary><strong>Prerequisites</strong> — what you need on the machine before `pipx install`</summary>
@@ -150,7 +174,7 @@ For deep configuration (story mix, hashtag pools, anti-detection toggles), use `
 - **Shadowban probe**: twice-daily reach drift + follower gain tracking
 - **Budget enforcement**: per-action daily caps that ramp over a 14-day warmup
 - **Auto-scheduling**: best-hours-UTC windows with randomised jitter
-- **Human-review gate**: toggle on/off; approve/reject every piece via CLI
+- **Fully autonomous by default**: daemon generates + posts without asking. Opt into the human-review gate (`--review` at setup, or edit niche.yaml) if you want one-click approval on every post
 
 </td>
 </tr>
@@ -336,7 +360,8 @@ See [`.env.example`](.env.example) for the full list with inline explanations.
 
 ```
 # Onboarding
-ig-agent setup                         # one-command quick setup (4 questions, ~2 min)
+ig-agent setup                         # one-command quick setup (4 questions, ~2 min) — fully autonomous
+ig-agent setup --review                # opt in to the one-click approval guardrail (training wheels)
 ig-agent setup --full                  # extended (~15 questions: voice, palette, hashtags, formats, schedule)
 ig-agent setup --minimal               # take preset defaults for everything except niche name
 ig-agent setup --with-login            # also prompt for IG credentials inline
@@ -421,6 +446,13 @@ It walks every dependency + config step with clear pass/warn/fail rows and a con
 Never used a terminal / Python / GitHub? Honest advice: **pair with a technical friend for the first 30 minutes.** The install is one line but the concepts (API keys, proxies, sessions, cookies) are a lot to absorb solo. Once setup is done the agent runs itself — you just need to get it over the initial hump.
 
 ## ❓ FAQ
+
+**Q: How autonomous is this actually? Do I have to babysit it?**
+A: No babysitting. Once you run `ig-agent run`, the daemon does everything — generates posts on schedule, posts them live, replies to comments, follows back, manages the warmup ramp, backs off on rate limits. No commands needed afterwards.
+
+There's one OPTIONAL guardrail: run `ig-agent setup --review` (or set `safety.require_review: true` in `niche.yaml`). That makes the daemon queue each post for one-click approval at `/review` before it goes live. Useful for the first week while you dial in the voice; flip it off when you trust the output.
+
+The manual commands in the CLI reference (`generate`, `drain`, `review`) are for testing the pipeline end-to-end on day 1 — not a daily workflow.
 
 **Q: How much does this cost to run?**
 A: $0 to a few dollars/month. OpenRouter has 29 free models. Pexels/Pixabay/Pollinations/Freesound are free. A $5/mo VPS (Hetzner, Vultr, OVH, Contabo) is plenty. Residential proxy is optional but recommended — $10–30/mo if you take one. Image/reel generation costs nothing unless you opt into ComfyUI with paid GPU time.
