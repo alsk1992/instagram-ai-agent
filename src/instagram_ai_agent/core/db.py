@@ -339,6 +339,21 @@ def init_db(path: Path | None = None) -> None:
         conn.execute(stmt)
 
 
+def integrity_check() -> tuple[bool, str]:
+    """Run SQLite's PRAGMA integrity_check. Returns (ok, detail).
+
+    Catches corrupted WAL files, missing pages, btree damage — the kinds
+    of failures that silently break queries without raising exceptions.
+    Called by ``ig-agent doctor`` and after any suspicious shutdown.
+    """
+    try:
+        row = get_conn().execute("PRAGMA integrity_check").fetchone()
+    except Exception as e:
+        return False, f"pragma failed: {e}"
+    detail = row[0] if row else "unknown"
+    return (detail == "ok"), detail
+
+
 # ───── State K/V ─────
 def state_get(key: str, default: str | None = None) -> str | None:
     row = get_conn().execute("SELECT value FROM state WHERE key=?", (key,)).fetchone()

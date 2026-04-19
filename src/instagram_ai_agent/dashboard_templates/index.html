@@ -84,7 +84,7 @@
 <main>
 
   <section>
-    <h2>queue</h2>
+    <h2>queue {% if queue_by_status.get('pending_review', 0) > 0 %}<a href="/review" style="font-size:13px;font-weight:normal;margin-left:10px;color:#c9a961;">→ review {{ queue_by_status['pending_review'] }} pending</a>{% endif %}</h2>
     <div class="stat-grid">
       <div class="stat"><div class="label">total</div><div class="value">{{ queue_total }}</div></div>
       {% for status, count in queue_by_status.items() %}

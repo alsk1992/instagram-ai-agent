@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from rich.logging import RichHandler
@@ -35,7 +36,14 @@ def setup_logging(name: str = "ig-agent", logfile: Path | None = None) -> loggin
 
     if logfile is not None:
         logfile.parent.mkdir(parents=True, exist_ok=True)
-        fh = logging.FileHandler(logfile, encoding="utf-8")
+        # Rotate at 50 MB, keep 5 backups. Long-running orchestrator would
+        # otherwise grow unbounded and eat VPS disk.
+        fh = RotatingFileHandler(
+            logfile,
+            maxBytes=50 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        )
         fh.setLevel(level)
         fh.setFormatter(
             logging.Formatter(

@@ -1047,14 +1047,75 @@ def login() -> None:
     load_env()
     ensure_dirs()
     db.init_db()
-    from instagram_ai_agent.plugins.ig import IGClient
+
+    if not os.environ.get("IG_USERNAME") or not os.environ.get("IG_PASSWORD"):
+        console.print("[red]✗[/red] IG_USERNAME or IG_PASSWORD missing in .env.")
+        console.print(
+            "  Fix: edit [italic].env[/italic] and fill both, OR run "
+            "[bold cyan]ig-agent setup --with-login[/bold cyan]."
+        )
+        raise typer.Exit(2)
+
+    from instagrapi.exceptions import (
+        BadPassword as _BadPassword,
+        ChallengeRequired as _ChallengeRequired,
+        LoginRequired as _LoginRequired,
+        TwoFactorRequired as _TwoFactorRequired,
+    )
+    from instagram_ai_agent.plugins.ig import IGClient, ChallengeNeedsManualCode
+
     cl = IGClient()
     try:
         cl.login()
-    except Exception as e:
-        console.print(f"[red]Login failed:[/red] {e}")
+    except _TwoFactorRequired:
+        console.print("[red]✗[/red] 2FA is enabled on this account.")
+        console.print(
+            "  Add [bold]IG_TOTP_SECRET[/bold] (base32) to .env — find it in "
+            "Instagram → Settings → Security → Two-Factor Authentication → "
+            "Authentication App."
+        )
         raise typer.Exit(1)
-    console.print(f"[green]Session persisted[/green] → {cl.session_path}")
+    except _BadPassword:
+        console.print("[red]✗[/red] Instagram rejected the password.")
+        console.print(
+            "  Note: on a fresh VPS, IG sometimes returns bad_password on a "
+            "correct password — it really means 'suspicious IP'. Fixes:\n"
+            "    • add a residential proxy: [bold]IG_PROXY=http://…[/bold] in .env\n"
+            "    • paste [bold]IG_SESSIONID[/bold] from your browser cookies (skips login entirely)\n"
+            "    • otherwise, double-check the password"
+        )
+        raise typer.Exit(1)
+    except ChallengeNeedsManualCode:
+        console.print(
+            "[yellow]⚠[/yellow] Instagram sent an email-code challenge. "
+            "The CLI prompted for it — if you're seeing this, you didn't enter it.\n"
+            "  To automate this: set [bold]IMAP_HOST/USER/PASS[/bold] in .env "
+            "(Gmail users: use an app password)."
+        )
+        raise typer.Exit(1)
+    except _ChallengeRequired as e:
+        console.print(f"[red]✗[/red] Instagram challenge requires manual resolution: {e}")
+        console.print(
+            "  Open the IG app → confirm the login in the 'Suspicious login' "
+            "notification → re-run [bold cyan]ig-agent login[/bold cyan]."
+        )
+        raise typer.Exit(1)
+    except _LoginRequired as e:
+        console.print(f"[red]✗[/red] LoginRequired: {e}")
+        console.print(
+            "  Your session cookie is dead. Delete [italic]data/sessions/*.json[/italic] "
+            "and re-run [bold cyan]ig-agent login[/bold cyan]."
+        )
+        raise typer.Exit(1)
+    except Exception as e:
+        # Fall-through — capture unexpected errors with exception type for clarity
+        console.print(f"[red]✗[/red] Login failed ({type(e).__name__}): {e}")
+        console.print(
+            "  Try [bold cyan]ig-agent doctor[/bold cyan] to diagnose, or "
+            "[bold]tail logs/orchestrator.log[/bold] for the full stack."
+        )
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] Session persisted → {cl.session_path}")
 
 
 # ───────── run / orchestrator ─────────
@@ -1068,6 +1129,32 @@ def run() -> None:
     if not providers_configured():
         console.print("[red]No LLM providers set.[/red] Configure OPENROUTER_API_KEY at minimum.")
         raise typer.Exit(2)
+
+    # Pre-flight: confirm there's a usable IG session file BEFORE kicking off
+    # the orchestrator loop. Otherwise the first post job fails with a
+    # cryptic instagrapi stack that's buried in logs.
+    from instagram_ai_agent.core.config import DATA_DIR
+    sessions_dir = DATA_DIR / "sessions"
+    has_session = sessions_dir.is_dir() and any(sessions_dir.glob("*.json"))
+    if not has_session:
+        username = os.environ.get("IG_USERNAME") or ""
+        if not username or not os.environ.get("IG_PASSWORD"):
+            console.print(
+                "[red]✗[/red] No Instagram session and IG_USERNAME/IG_PASSWORD are missing."
+            )
+        else:
+            console.print(
+                "[red]✗[/red] No Instagram session yet — "
+                f"data/sessions/{username}.json does not exist."
+            )
+        console.print(
+            "  Run [bold cyan]ig-agent login[/bold cyan] first to create the "
+            "session, then [bold cyan]ig-agent run[/bold cyan].\n"
+            "  (Or generate + review offline: [bold cyan]ig-agent generate -n 3[/bold cyan] "
+            "doesn't need a session.)"
+        )
+        raise typer.Exit(2)
+
     from instagram_ai_agent.orchestrator import main as orch_main
     orch_main()
 
@@ -1182,7 +1269,12 @@ def review() -> None:
 
     items = db.content_list(status="pending_review", limit=200)
     if not items:
-        console.print("[green]No items pending review.[/green]")
+        console.print("[green]Nothing to review.[/green]")
+        console.print(
+            "  [dim]Run [bold cyan]ig-agent generate -n 3[/bold cyan] to make "
+            "some posts, then re-run review. Prefer a visual web UI? "
+            "[bold cyan]ig-agent dashboard[/bold cyan].[/dim]"
+        )
         return
     console.print(
         f"[dim]{len(items)} pending items. "
@@ -1687,6 +1779,18 @@ def doctor() -> None:
             warn("Idea bank empty", "Run `ig-agent seed-idea-bank`")
     except Exception as e:
         warn("Couldn't count ideas", str(e))
+
+    # brain.db integrity
+    try:
+        db_ok, detail = db.integrity_check()
+        if db_ok:
+            ok("brain.db integrity: ok")
+        else:
+            fail("brain.db integrity failed",
+                 f"{detail}. Back up data/brain.db and "
+                 "run `rm data/brain.db*` to start fresh (loses queue + post history).")
+    except Exception as e:
+        warn("Couldn't run integrity check", str(e))
 
     # Optional extras
     for label, mod, extra in (

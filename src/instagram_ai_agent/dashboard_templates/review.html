@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>review — ig-agent</title>
+  <style>
+    :root { --bg:#0a0a0a; --fg:#f5f5f0; --muted:#8a8a85; --accent:#c9a961; --ok:#4ade80; --bad:#f87171; --card:#141413; --line:#26251f; }
+    * { box-sizing: border-box; }
+    body { background: var(--bg); color: var(--fg); font: 15px/1.5 -apple-system, system-ui, "Segoe UI", Roboto, Inter, sans-serif; margin: 0; padding: 2rem 1.25rem 3rem; max-width: 900px; margin: 0 auto; }
+    header { display: flex; align-items: baseline; gap: 1rem; justify-content: space-between; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--line); }
+    header h1 { font-size: 1.2rem; font-weight: 600; margin: 0; }
+    header .count { color: var(--muted); font-size: 0.9rem; }
+    header a { color: var(--accent); text-decoration: none; font-size: 0.9rem; }
+    .empty { text-align: center; padding: 4rem 1rem; color: var(--muted); }
+    .empty code { background: var(--card); padding: 0.15rem 0.45rem; border-radius: 4px; color: var(--accent); }
+    .item { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem; margin-bottom: 1rem; }
+    .item[data-done="approved"] { border-left: 3px solid var(--ok); opacity: 0.5; }
+    .item[data-done="rejected"] { border-left: 3px solid var(--bad); opacity: 0.4; }
+    .meta { display: flex; gap: 0.75rem; color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
+    .meta .score { color: var(--accent); font-weight: 600; }
+    .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.5rem; margin: 0.8rem 0; }
+    .media-grid img { width: 100%; aspect-ratio: 4/5; object-fit: cover; border-radius: 6px; background: #222; display: block; }
+    .caption { white-space: pre-wrap; margin: 0.5rem 0 0.75rem; font-size: 0.95rem; line-height: 1.6; }
+    .notes { color: var(--muted); font-size: 0.85rem; font-style: italic; margin-bottom: 0.75rem; border-left: 2px solid var(--line); padding-left: 0.75rem; }
+    .actions { display: flex; gap: 0.6rem; }
+    button { font: inherit; font-weight: 600; padding: 0.55rem 1.1rem; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; transition: all 0.12s; }
+    button:hover { border-color: var(--accent); transform: translateY(-1px); }
+    button.approve { background: var(--ok); color: #062; border-color: var(--ok); }
+    button.reject { background: transparent; color: var(--bad); border-color: var(--bad); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .status { font-size: 0.85rem; color: var(--muted); margin-left: auto; align-self: center; }
+    @media (max-width: 600px) { body { padding: 1.25rem 0.75rem 2rem; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Pending review <span class="count">({{ items|length }})</span></h1>
+    <div><a href="/">← dashboard</a></div>
+  </header>
+
+  {% if not items %}
+    <div class="empty">
+      <p>Nothing to review.</p>
+      <p>Run <code>ig-agent generate -n 3</code> to queue some posts.</p>
+    </div>
+  {% else %}
+    {% for item in items %}
+    <div class="item" data-id="{{ item.id }}">
+      <div class="meta">
+        <span>#{{ item.id }}</span>
+        <span>{{ item.format }}</span>
+        {% if item.critic_score is not none %}<span class="score">critic: {{ item.critic_score }}</span>{% endif %}
+        {% if item.created_at %}<span>{{ item.created_at[:16].replace('T', ' ') }}</span>{% endif %}
+      </div>
+      {% if item.media_urls %}
+      <div class="media-grid">
+        {% for url in item.media_urls %}
+        <img src="{{ url }}" alt="slide" loading="lazy">
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="caption">{{ item.caption }}</div>
+      {% if item.critic_notes %}<div class="notes">{{ item.critic_notes }}</div>{% endif %}
+      <div class="actions">
+        <button class="approve" data-action="approve">approve</button>
+        <button class="reject" data-action="reject">reject</button>
+        <span class="status"></span>
+      </div>
+    </div>
+    {% endfor %}
+  {% endif %}
+
+  <script>
+    document.querySelectorAll('.item').forEach(card => {
+      card.addEventListener('click', async (ev) => {
+        const btn = ev.target.closest('button[data-action]');
+        if (!btn) return;
+        const action = btn.dataset.action;
+        const id = card.dataset.id;
+        const statusEl = card.querySelector('.status');
+        [...card.querySelectorAll('button')].forEach(b => b.disabled = true);
+        statusEl.textContent = '…';
+        try {
+          const r = await fetch(`/api/queue/${id}/${action}`, { method: 'POST' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const data = await r.json();
+          card.dataset.done = data.status;
+          statusEl.textContent = action === 'approve' ? '✓ approved' : '✗ rejected';
+        } catch (e) {
+          statusEl.textContent = 'error — retry';
+          statusEl.style.color = 'var(--bad)';
+          [...card.querySelectorAll('button')].forEach(b => b.disabled = false);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -67,6 +67,52 @@ def create_app() -> FastAPI:
             item.pop("meta", None)
         return JSONResponse(items)
 
+    @app.get("/review", response_class=HTMLResponse, dependencies=auth_dep)
+    async def review_page(request: Request) -> HTMLResponse:
+        """Visual review of every pending item — approve/reject in one click."""
+        pending = db.content_list(status="pending_review", limit=200)
+        items: list[dict] = []
+        for p in pending:
+            media_paths = p.get("media_paths") or []
+            media_urls = [
+                url for url in (_media_preview_url([mp]) for mp in media_paths) if url
+            ]
+            critic_overall = None
+            try:
+                import json as _json
+                meta = _json.loads(p.get("meta") or "{}")
+                if isinstance(meta, dict):
+                    score = meta.get("critic_score")
+                    if isinstance(score, (int, float)):
+                        critic_overall = round(float(score), 2)
+            except Exception:
+                pass
+            if critic_overall is None and p.get("critic_score") is not None:
+                try:
+                    critic_overall = round(float(p["critic_score"]), 2)
+                except Exception:
+                    critic_overall = None
+            items.append({
+                "id": p["id"],
+                "format": p["format"],
+                "caption": p.get("caption") or "",
+                "media_urls": media_urls,
+                "critic_score": critic_overall,
+                "critic_notes": (p.get("critic_notes") or "")[:240],
+                "created_at": p.get("created_at"),
+            })
+        return templates.TemplateResponse(request, "review.html", {"items": items})
+
+    @app.post("/api/queue/{cid}/approve", dependencies=auth_dep)
+    async def api_approve(cid: int) -> JSONResponse:
+        db.content_update_status(cid, "approved")
+        return JSONResponse({"id": cid, "status": "approved"})
+
+    @app.post("/api/queue/{cid}/reject", dependencies=auth_dep)
+    async def api_reject(cid: int) -> JSONResponse:
+        db.content_update_status(cid, "rejected")
+        return JSONResponse({"id": cid, "status": "rejected"})
+
     @app.get("/media/{path:path}", dependencies=auth_dep)
     async def media(path: str) -> FileResponse:
         """Serve staged or posted media for preview in the dashboard."""

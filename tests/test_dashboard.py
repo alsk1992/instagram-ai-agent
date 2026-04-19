@@ -94,3 +94,53 @@ def test_auth_enforced_when_env_set(prepped: TestClient, monkeypatch: pytest.Mon
     assert r2.status_code == 200
     r3 = client.get("/", auth=("admin", "wrong"))
     assert r3.status_code == 401
+
+
+# ─── approve / reject actions ───
+def test_review_page_empty_state(prepped: TestClient):
+    """No pending items → page renders with 'Nothing to review' empty state."""
+    r = prepped.get("/review")
+    assert r.status_code == 200
+    assert "Nothing to review" in r.text
+
+
+def test_review_approve_endpoint_flips_status(prepped: TestClient):
+    cid = db.content_enqueue(
+        format="carousel", caption="pending item", hashtags=[], media_paths=[],
+        phash="ffff0000", critic_score=0.7, critic_notes="", generator="carousel",
+        status="pending_review",
+    )
+    r = prepped.post(f"/api/queue/{cid}/approve")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["id"] == cid
+    assert data["status"] == "approved"
+
+    rows = db.content_list(status="approved")
+    assert any(row["id"] == cid for row in rows)
+
+
+def test_review_reject_endpoint_flips_status(prepped: TestClient):
+    cid = db.content_enqueue(
+        format="meme", caption="bad draft", hashtags=[], media_paths=[],
+        phash="0000abcd", critic_score=0.3, critic_notes="weak", generator="meme",
+        status="pending_review",
+    )
+    r = prepped.post(f"/api/queue/{cid}/reject")
+    assert r.status_code == 200
+    assert r.json()["status"] == "rejected"
+
+
+def test_review_page_lists_pending(prepped: TestClient):
+    """Pending item with caption must be visible on /review."""
+    db.content_enqueue(
+        format="quote_card", caption="visible pending caption here for human review",
+        hashtags=[], media_paths=[], phash="beadbeef",
+        critic_score=0.6, critic_notes="", generator="quote_card",
+        status="pending_review",
+    )
+    r = prepped.get("/review")
+    assert r.status_code == 200
+    assert "visible pending caption" in r.text
+    assert 'data-action="approve"' in r.text
+    assert 'data-action="reject"' in r.text
