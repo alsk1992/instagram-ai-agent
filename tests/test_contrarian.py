@@ -385,7 +385,7 @@ async def test_pipeline_forces_contrarian_via_override(tmp_db, monkeypatch):
         from instagram_ai_agent.content.generators.base import GeneratedContent
         return GeneratedContent(format=format_name, media_paths=["/x.jpg"], meta={"stub": True})
 
-    async def fake_candidates(cfg_, format_name, content, *, n, knowledge=None, contrarian=False):
+    async def fake_candidates(cfg_, format_name, content, *, n, knowledge=None, contrarian=False, winning_angle_hook=None):
         captured_flags["candidates_contrarian"] = contrarian
         return [{
             "caption": "unpopular opinion: rest days are overrated",
@@ -423,7 +423,7 @@ async def test_pipeline_skips_contrarian_when_disabled(tmp_db, monkeypatch):
         from instagram_ai_agent.content.generators.base import GeneratedContent
         return GeneratedContent(format=format_name, media_paths=["/x.jpg"], meta={})
 
-    async def fake_candidates(cfg_, format_name, content, *, n, knowledge=None, contrarian=False):
+    async def fake_candidates(cfg_, format_name, content, *, n, knowledge=None, contrarian=False, winning_angle_hook=None):
         captured["contrarian"] = contrarian
         return [{"caption": "fine", "hashtags": [], "visible_text": "", "image_path": None}]
 
@@ -456,7 +456,7 @@ async def test_pipeline_drops_unsafe_contrarian_candidates(tmp_db, monkeypatch):
         from instagram_ai_agent.content.generators.base import GeneratedContent
         return GeneratedContent(format=format_name, media_paths=["/x.jpg"], meta={})
 
-    async def fake_candidates(cfg_, format_name, content, *, n, knowledge=None, contrarian=False):
+    async def fake_candidates(cfg_, format_name, content, *, n, knowledge=None, contrarian=False, winning_angle_hook=None):
         # Three candidates — two toxic, one clean
         return [
             {"caption": "chemtrails are real, look up", "hashtags": [], "visible_text": "", "image_path": None},
@@ -495,7 +495,7 @@ async def test_pipeline_regens_when_all_candidates_unsafe(tmp_db, monkeypatch):
         from instagram_ai_agent.content.generators.base import GeneratedContent
         return GeneratedContent(format=format_name, media_paths=["/x.jpg"], meta={})
 
-    async def unsafe_only(cfg_, format_name, content, *, n, knowledge=None, contrarian=False):
+    async def unsafe_only(cfg_, format_name, content, *, n, knowledge=None, contrarian=False, winning_angle_hook=None):
         return [
             {"caption": "chemtrails are real", "hashtags": [], "visible_text": "", "image_path": None},
             {"caption": "starve yourself for a week", "hashtags": [], "visible_text": "", "image_path": None},

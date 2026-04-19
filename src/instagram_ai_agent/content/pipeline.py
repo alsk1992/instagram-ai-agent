@@ -17,6 +17,7 @@ import traceback
 
 from instagram_ai_agent.content import angle_brainstorm
 from instagram_ai_agent.content import captions as caption_mod
+from instagram_ai_agent.content import comment_bait
 from instagram_ai_agent.content import critic as critic_mod
 from instagram_ai_agent.content import dedup as dedup_mod
 from instagram_ai_agent.content import hashtags as hashtag_mod
@@ -143,6 +144,7 @@ async def generate_one(
         candidates = await _build_caption_candidates(
             cfg, format_name, content, n=n, knowledge=knowledge,
             contrarian=contrarian_active,
+            winning_angle_hook=winning_angle.hook if winning_angle else None,
         )
 
         # Contrarian hard-safety gate — runs on every candidate after
@@ -278,6 +280,7 @@ async def _build_caption_candidates(
     n: int,
     knowledge: str | None = None,
     contrarian: bool = False,
+    winning_angle_hook: str | None = None,
 ) -> list[dict]:
     """Produce n caption candidates (caption + hashtags + image_path) in parallel."""
 
@@ -303,6 +306,16 @@ async def _build_caption_candidates(
                 context=content.caption_context or "",
                 knowledge=knowledge or "",
             )
+        # Comment-bait pass — engineer the final line into a comment-triggering
+        # pattern for formats where comments are the engagement goal. Skips
+        # memes/stories (share-optimised) and captions already ending in a
+        # question (assumed already engineered).
+        caption_body = await comment_bait.engineer(
+            cfg, caption_body,
+            format_name=format_name,
+            angle_hook=winning_angle_hook,
+            contrarian=contrarian,
+        )
         if format_name.startswith("story_"):
             tags: list[str] = []
             full = caption_body.strip()
