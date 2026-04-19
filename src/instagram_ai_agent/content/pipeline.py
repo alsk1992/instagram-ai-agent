@@ -15,6 +15,7 @@ import asyncio
 import random
 import traceback
 
+from instagram_ai_agent.content import angle_brainstorm
 from instagram_ai_agent.content import captions as caption_mod
 from instagram_ai_agent.content import critic as critic_mod
 from instagram_ai_agent.content import dedup as dedup_mod
@@ -90,6 +91,23 @@ async def generate_one(
         )
         # NOTE: we only `mark_used` after a successful enqueue below — a
         # failed generation must NOT burn the recency slot or bump use_count.
+
+    # Pre-generation angle + hook brainstorm. One cheap LLM call produces
+    # 15 angle/hook candidates from the research context, self-ranks them,
+    # returns the winner. Winner becomes a hard constraint at the top of
+    # trend_context so the skeleton is sharp before any caption work.
+    # Falling through on None is intentional: research-only context still
+    # generates usable posts — this is a quality lift, not a dependency.
+    winning_angle = await angle_brainstorm.brainstorm_angle(
+        cfg,
+        format_name=format_name,
+        sub_topic=sub_topic,
+        research_context="\n".join(trend_context_parts),
+        archetype_hook=chosen_idea.hook_formula if chosen_idea else None,
+        contrarian=contrarian_active,
+    )
+    if winning_angle is not None:
+        trend_context_parts.insert(0, winning_angle.as_context_block())
 
     trend_context = "\n".join(trend_context_parts)
 
@@ -226,6 +244,8 @@ async def generate_one(
                 "archetype": chosen_idea.archetype if chosen_idea else None,
                 "archetype_id": chosen_idea.id if chosen_idea else None,
                 "contrarian_mode": contrarian_active,
+                "winning_hook": winning_angle.hook if winning_angle else None,
+                "winning_angle": winning_angle.angle if winning_angle else None,
             },
         )
         if sub_topic:
