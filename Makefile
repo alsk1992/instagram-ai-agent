@@ -13,8 +13,15 @@ help: ## show this help
 
 install: ## first-run: venv + deps + playwright + default assets
 	./install.sh
+	@echo "\n\033[1mNext:\033[0m make setup   \033[2m(or: ig-agent setup)\033[0m"
 
-init: ## interactive wizard → niche.yaml + .env
+setup: ## one-command onboarding — deps + niche + AI key (quick mode, 4 questions)
+	$(IG) setup
+
+setup-full: ## deep-config onboarding (~15 questions: voice / palette / formats / schedule / optional keys)
+	$(IG) setup --full
+
+init: ## legacy 40-question wizard — prefer `make setup` for most users
 	$(IG) init
 
 login: ## verify Instagram credentials + persist session
@@ -52,4 +59,4 @@ clean: ## remove venv + caches (keeps data/ and niche.yaml)
 	rm -rf .venv __pycache__ .pytest_cache .ruff_cache *.egg-info
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
 
-.PHONY: help install init login generate review run status dashboard test lint update clean
+.PHONY: help install setup setup-full init login generate review run status dashboard doctor test lint update clean

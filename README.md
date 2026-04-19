@@ -2,9 +2,11 @@
 
 # instagram-ai-agent
 
-**The autonomous AI agent that runs your Instagram.**
+**An AI that runs your Instagram page for you.**
 
-Describe your niche once. It mines trends, generates reels + carousels + memes, writes captions, posts on your schedule, replies to comments, and keeps itself out of shadowbans. Single process. Free tier by default. Commercial-safe.
+Tell it what your page is about. It writes the posts, designs the images, writes the captions, posts on schedule, replies to comments, and follows the best practices that keep accounts from getting banned. You review posts before they go live.
+
+Free to run on free-tier AI models. Runs on your own laptop or a $5/month server. No subscription.
 
 
 
@@ -39,11 +41,13 @@ That's the whole thing. `setup` auto-installs Playwright chromium, picks a niche
 
 ```bash
 ig-agent generate -n 3    # make your first 3 posts (~2 min)
-ig-agent review           # walk + approve each
-ig-agent dashboard        # browse everything in a web UI on :8080
+ig-agent dashboard        # open http://127.0.0.1:8080 — approve posts visually
+ig-agent drain            # post the approved ones right now (once IG is connected)
 ```
 
-Then `ig-agent login` when you're ready to connect Instagram and post them.
+Prefer the terminal? `ig-agent review` walks you through each pending post. Something off? `ig-agent doctor` diagnoses your setup in 3 seconds.
+
+`ig-agent login` connects your Instagram account when you're ready to actually post.
 
 <details>
 <summary><strong>Prerequisites</strong> — what you need on the machine before `pipx install`</summary>
@@ -76,11 +80,11 @@ For deep configuration (story mix, hashtag pools, anti-detection toggles), use `
 </details>
 
 <details>
-<summary><strong>First-time Instagram setup</strong> — warmup, cookies, email-code challenges</summary>
+<summary><strong>First-time Instagram setup</strong> — how it keeps your account safe</summary>
 
-- **Brand-new account?** Leave `IG_SKIP_WARMUP` off. The 14-day warmup ramp blocks ALL posts for the first 7 days by design — the single biggest ban-avoidance lever.
-- **Account with history?** Set `IG_SKIP_WARMUP=1` in `.env` to post immediately.
-- **Fresh VPS or new IP?** Paste browser cookies into `.env` (see [Safety section](#%EF%B8%8F-safety--anti-detection)) so IG skips the email-code challenge.
+- **Brand-new account?** Leave the warmup setting alone. The agent waits ~7 days before posting, then slowly increases activity over 14 days — this is the single biggest thing that prevents Instagram from banning automated accounts. Use this time to run `generate` + `review` so you have content queued and ready.
+- **Account that already posts regularly?** Set `IG_SKIP_WARMUP=1` in `.env` — it'll post immediately.
+- **Posting from a VPS or a new IP?** Instagram will often send an email-code challenge the first time. You can either let the agent read your Gmail (set `IMAP_HOST/USER/PASS`), paste a browser cookie to skip the challenge, or run `ig-agent login` in a terminal and type the code manually. Details in the [Safety section](#%EF%B8%8F-safety--anti-detection).
 
 </details>
 
@@ -92,14 +96,18 @@ For deep configuration (story mix, hashtag pools, anti-detection toggles), use `
 <tr>
 <td width="50%" valign="top">
 
-### Content generation
-- **7 feed formats**: memes, quote cards, carousels, stock reels, AI reels, photos, human-subject photos
-- **Story formats**: quote, announcement, photo, video
-- **Narrative carousels**: character-consistent multi-slide stories
-- **Reel-to-carousel repurpose**: get a second life from your best reels
-- **Contrarian / hot-take mode**: polarising posts for engagement spikes
-- **Beat-synced cuts**: reels auto-sync scene boundaries to the music's downbeats
-- **Kinetic captions**: WhisperX word-level karaoke subtitles on every reel
+### What it posts
+- **Memes** — image with bold overlay text, the classic fast-scroll stopper
+- **Quote cards** — designed single-slide cards with a memorable line
+- **Carousels** — multi-slide posts that tell a story (hook → point → point → CTA)
+- **Reels from stock** — short videos cut from free stock footage, voiced over
+- **Reels from AI** — fully AI-generated short videos
+- **Photos + AI portraits** — image posts, optionally with a consistent "face" across every post
+- **Stories** — quote, announcement, photo, video (the ephemeral 24h ones)
+- **Narrative carousels** — same character across all slides
+- **Hot takes / contrarian posts** — contrarian angle for engagement spikes
+- **Auto-beat-synced cuts** — reels cut on the music's beat
+- **Karaoke subtitles** — word-level captions appear on every reel
 
 </td>
 <td width="50%" valign="top">

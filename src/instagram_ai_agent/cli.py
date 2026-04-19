@@ -1087,22 +1087,79 @@ def generate(
     ensure_dirs()
     db.init_db()
     cfg = _require_niche()
-    if not providers_configured():
-        console.print("[red]No LLM providers set.[/red]")
+
+    configured = providers_configured()
+    if not configured:
+        # Actionable diagnostic — tell the user exactly which keys are
+        # missing, don't just say "no providers".
+        expected = {
+            "OPENROUTER_API_KEY": "https://openrouter.ai/keys",
+            "GROQ_API_KEY":       "https://console.groq.com",
+            "GEMINI_API_KEY":     "https://aistudio.google.com",
+            "CEREBRAS_API_KEY":   "https://cloud.cerebras.ai",
+        }
+        missing = [k for k in expected if not os.environ.get(k)]
+        console.print("[red]✗[/red] No working AI provider — need at least one of:")
+        for key in missing:
+            console.print(f"    [dim]•[/dim] [bold]{key}[/bold]  → {expected[key]}")
+        console.print(
+            "\n  Fastest fix: run [bold cyan]ig-agent setup[/bold cyan] "
+            "(opens OpenRouter in your browser + validates the key live).\n"
+            "  Or edit [italic].env[/italic] and rerun."
+        )
         raise typer.Exit(2)
+
+    console.print(
+        f"[dim]Providers: {', '.join(configured)} · generating {count} "
+        f"{'post' if count == 1 else 'posts'}. Each takes ~30–120s "
+        "(LLM calls + image render).[/dim]\n"
+    )
 
     async def _go():
         made: list[int] = []
-        for i in range(count):
-            cid = await content_pipeline.generate_one(
-                cfg, format_override=format, contrarian_override=contrarian,
+        failures: list[str] = []
+        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Generating", total=count)
+            for i in range(count):
+                progress.update(task, description=f"Generating post {i + 1}/{count} ({format or 'auto-pick'})")
+                try:
+                    cid = await content_pipeline.generate_one(
+                        cfg, format_override=format, contrarian_override=contrarian,
+                    )
+                except Exception as e:
+                    failures.append(f"#{i + 1}: {type(e).__name__}: {e}")
+                    cid = None
+                if cid is not None:
+                    made.append(cid)
+                    progress.log(f"[green]✓[/green] post {i + 1}: id={cid} ({format or 'auto'})")
+                else:
+                    progress.log(f"[yellow]·[/yellow] post {i + 1}: skipped or rejected (hit regen cap)")
+                progress.advance(task)
+
+        console.print(f"\n[bold]Done:[/bold] {len(made)} / {count} enqueued")
+        if failures:
+            console.print("\n[yellow]Failures:[/yellow]")
+            for f in failures[:3]:
+                console.print(f"  {f}")
+            if len(failures) > 3:
+                console.print(f"  … and {len(failures) - 3} more.")
+            console.print(
+                "\n[dim]Full traceback: [bold]tail -f logs/orchestrator.log[/bold][/dim]"
             )
-            if cid is not None:
-                made.append(cid)
-                console.print(f"[green]✓[/green] Enqueued content id={cid} ({format or 'auto'})")
-            else:
-                console.print("[yellow]· skipped or rejected[/yellow]")
-        console.print(f"\nDone: {len(made)} / {count}")
+        if made:
+            console.print(
+                "\n[dim]Next:[/dim] [bold cyan]ig-agent dashboard[/bold cyan]  "
+                "[dim](approve visually)[/dim]   or   [bold cyan]ig-agent review[/bold cyan]  [dim](in terminal)[/dim]"
+            )
+
     asyncio.run(_go())
 
 
