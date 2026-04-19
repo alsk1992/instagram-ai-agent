@@ -18,7 +18,7 @@ _43-second walkthrough — real `ig-agent doctor`, `status`, `warmup-status` run
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-671%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-748%20passing-brightgreen)](tests/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/alsk1992/instagram-ai-agent)
 
@@ -119,7 +119,8 @@ For deep configuration (story mix, hashtag pools, anti-detection toggles), use `
 - **Trend miner**: scrapes competitor + hashtag feeds, feeds the generator
 - **Reddit question harvester**: turns "what the community is asking" into content
 - **Event calendar**: Nager.Date holidays + user dates → seasonal posts
-- **Critic 2.0**: LLM rubric scores every draft on 7 dimensions before enqueue
+- **Critic 3.0**: 8-dimension rubric with save_potential weighted 3× (matches Instagram's 2026 algorithm weighting — saves drive reach, not likes)
+- **Genius-tier pre-stages**: every post passes through angle brainstorm (15 candidates → winning hook), slide-1 hook optimiser (8 scroll-stop variants), specificity rewrite (strips "pro tips / game-changer" filler), story-arc enforcer (prescriptive → lived-experience), voice fingerprint (shipped-caption few-shot), comment-bait CTA engineer (binary-pick / number-drop / emoji-react patterns)
 
 </td>
 </tr>
@@ -170,7 +171,7 @@ For deep configuration (story mix, hashtag pools, anti-detection toggles), use `
 - **Typer CLI**: `ig-agent` with `init / login / run / review / generate / status / dashboard / lora / controlnet`
 - **Makefile shortcuts**: `make install / init / run / test / dashboard`
 - **Local read-only dashboard**: `make dashboard` → `http://127.0.0.1:8080`
-- **671 tests**, 0 import failures across 71 modules
+- **748 tests**, 0 import failures across 90+ modules
 - **Commercial-licence gates baked in**: FLUX.1-dev, OpenPose, StoryDiffusion code all blocked under `commercial=True`
 
 </td>
@@ -334,27 +335,41 @@ See [`.env.example`](.env.example) for the full list with inline explanations.
 ## 📚 CLI reference
 
 ```
-ig-agent init                          # interactive setup wizard
+# Onboarding
+ig-agent setup                         # one-command quick setup (4 questions, ~2 min)
+ig-agent setup --full                  # extended (~15 questions: voice, palette, hashtags, formats, schedule)
+ig-agent setup --minimal               # take preset defaults for everything except niche name
+ig-agent setup --with-login            # also prompt for IG credentials inline
+ig-agent setup --force                 # overwrite existing niche.yaml without asking
+ig-agent init                          # legacy 40-question deep wizard
+
+# Daily ops
 ig-agent login                         # verify IG credentials, handle challenges
 ig-agent run                           # start the full orchestrator (long-running)
+ig-agent pause                         # halt all IG writes + generation (brain keeps running)
+ig-agent resume                        # clear pause state
+ig-agent status                        # agent pulse (heartbeat, backoff, queue, next posts, recent actions)
+ig-agent doctor                        # diagnostic self-check with DB integrity
 
-ig-agent generate [-n N]               # one-off: generate N posts into the queue
+# Content
+ig-agent generate [-n N]               # generate N posts into the queue (with live progress)
 ig-agent generate --format carousel    # force a specific format
 ig-agent generate --contrarian         # force hot-take mode for this batch
-ig-agent review                        # walk + approve/reject pending-review items
+ig-agent review                        # terminal walk-through: approve/reject pending items
 ig-agent drain [--limit N]             # post up to N approved items immediately
+ig-agent dashboard                     # local web dashboard on :8080 — visual approve/reject at /review
+ig-agent add-content <format> <media>  # drop external media straight into the queue
 
-ig-agent status                        # queue depth + last post + health
+# Introspection
 ig-agent warmup-status                 # current day + scaled caps
-ig-agent dashboard                     # local web dashboard on :8080
 ig-agent show-niche                    # dump resolved niche.yaml
-
 ig-agent events [--push]               # upcoming holidays + user dates
 ig-agent reddit-questions [--push]     # niche-subreddit question harvester
 ig-agent index-knowledge [--clear]     # rebuild RAG index from data/knowledge/
 ig-agent seed-idea-bank [--fetch ...]  # reload archetype library
 ig-agent hashtag-review                # approve discovered hashtags
 
+# Brand LoRA / ControlNet (optional, advanced)
 ig-agent lora prepare <dir> --name X --trigger W
 ig-agent lora import <file.safetensors> --name X --trigger W
 ig-agent lora list / activate / deactivate / remove

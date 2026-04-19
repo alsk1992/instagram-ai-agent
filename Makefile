@@ -36,8 +36,14 @@ review: ## walk pending-review items, approve / reject
 run: ## start the full orchestrator (brain + generator + poster + engager)
 	$(IG) run
 
-status: ## queue depth + health snapshot
+status: ## agent pulse (heartbeat, backoff, queue, next posts)
 	$(IG) status
+
+pause: ## halt all IG writes + generation (brain keeps running)
+	$(IG) pause
+
+resume: ## clear pause state
+	$(IG) resume
 
 doctor: ## diagnostic self-check — run when something's off
 	$(IG) doctor
@@ -59,4 +65,4 @@ clean: ## remove venv + caches (keeps data/ and niche.yaml)
 	rm -rf .venv __pycache__ .pytest_cache .ruff_cache *.egg-info
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
 
-.PHONY: help install setup setup-full init login generate review run status dashboard doctor test lint update clean
+.PHONY: help install setup setup-full init login generate review run pause resume status dashboard doctor test lint update clean

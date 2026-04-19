@@ -1,7 +1,7 @@
 [project]
 name = "instagram-ai-agent"
-version = "0.1.0"
-description = "Autonomous AI agent for Instagram — generates reels, carousels, memes, quote cards on autopilot. LLM router, commercial-safe, 8-feature anti-detection."
+version = "0.2.0"
+description = "Autonomous AI agent for Instagram — generates reels, carousels, memes, quote cards on autopilot. Free-tier LLM router, 8-dim critic with save_potential, 6-stage genius-tier content pipeline (angle brainstorm → slide-1 hook → specificity → story arc → voice fingerprint → comment bait), commercial-safe, 8-feature anti-detection."
 requires-python = ">=3.11"
 readme = "README.md"
 license = { text = "MIT" }
@@ -12,6 +12,7 @@ keywords = [
     "instagram", "instagram-bot", "instagram-automation", "instagram-ai",
     "ai-agent", "content-automation", "social-media-automation",
     "llm", "autonomous-agent", "comfyui", "flux", "lora",
+    "content-quality", "critic", "dashboard",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
