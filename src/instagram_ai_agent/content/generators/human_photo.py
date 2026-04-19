@@ -25,7 +25,7 @@ import httpx
 
 from instagram_ai_agent.content import image_rank
 from instagram_ai_agent.content.generators.base import GeneratedContent, staging_path
-from instagram_ai_agent.content.style import apply_lut_image, apply_watermark
+from instagram_ai_agent.content.style import apply_film_look, apply_lut_image, apply_watermark
 from instagram_ai_agent.core.config import BrandCharacter, HumanPhoto, NicheConfig
 from instagram_ai_agent.core.llm import generate
 from instagram_ai_agent.core.logging_setup import get_logger
@@ -39,11 +39,34 @@ POLLINATIONS_IMAGE = (
 
 
 # ───── Persona helpers ─────
+_BRAND_SEED_STATE_KEY = "human_photo.brand_seed"
+
+
 def _persona_for_gen(cfg: NicheConfig) -> tuple[str, int]:
-    """Return (persona_description, seed_to_use)."""
+    """Return (persona_description, seed_to_use).
+
+    Brand character mode: the character description is deterministic (same
+    fields → same string), but seed selection needs persistence too. If
+    ``hp.character.seed`` is explicitly set in niche.yaml we use it; otherwise
+    we generate one on first call and cache it in ``db.state`` so every
+    subsequent post shows the SAME face. This is the #1 fix for "the cast
+    rotates weekly" — a classic AI-account tell.
+    """
     hp = cfg.human_photo
     if hp.character.enabled:
-        return _brand_persona(hp.character), hp.character.seed or random.randint(1, 10**7)
+        if hp.character.seed:
+            return _brand_persona(hp.character), hp.character.seed
+        # Cached seed path — lock the character on first generation
+        from instagram_ai_agent.core import db
+        cached = db.state_get(_BRAND_SEED_STATE_KEY)
+        if cached:
+            try:
+                return _brand_persona(hp.character), int(cached)
+            except (TypeError, ValueError):
+                pass
+        new_seed = random.randint(1, 10**7)
+        db.state_set(_BRAND_SEED_STATE_KEY, str(new_seed))
+        return _brand_persona(hp.character), new_seed
     if hp.diversity_pool:
         pick = random.choice(hp.diversity_pool)
     else:
@@ -70,6 +93,16 @@ def _brand_persona(ch: BrandCharacter) -> str:
 async def _scene_idea(cfg: NicheConfig, persona: str, trend_context: str, *, vertical: bool) -> dict:
     """LLM decides a concrete on-niche situation featuring the persona."""
     orient = "portrait/vertical" if vertical else "square"
+    # Composition rotation — breaks the centre-framed AI-default look.
+    composition = random.choice([
+        "subject on the left third, negative space right, 35mm",
+        "three-quarter profile, subject lower-right, 50mm f/1.8",
+        "over-the-shoulder POV, subject at mid-depth, cinematic 50mm",
+        "low-angle looking up, subject upper-third, 24mm",
+        "tight detail crop, hand or prop in foreground, subject bottom-half, 85mm",
+        "rule-of-thirds grid-intersection framing, 35mm wide aperture",
+        "from-behind walking shot, subject mid-frame, environment leading the eye, 50mm",
+    ])
     system = (
         f"You direct niche Instagram photography for a page about {cfg.niche}.\n"
         f"Audience: {cfg.target_audience}.\n"
@@ -77,12 +110,15 @@ async def _scene_idea(cfg: NicheConfig, persona: str, trend_context: str, *, ver
         f"Aesthetic palette hint: {', '.join(cfg.aesthetic.palette)}.\n"
         "You write photography prompts for a Flux-realism image model.\n"
         f"Orientation: {orient}.\n"
+        f"Composition directive (MUST be reflected): {composition}.\n"
         "Rules for the prompt:\n"
         "- ONE specific scene, shot, and activity on-niche.\n"
         "- Subject is a real human matching the given persona.\n"
         "- Include lens/focal length hint (e.g. 35mm, 50mm, 85mm), lighting "
         "(soft window, golden hour, dim gym, overcast), and environment.\n"
         "- Photorealistic. Candid, not posed. No on-image text.\n"
+        "- Mild imperfection welcome — natural skin texture, uneven light, "
+        "hair out of place. Avoid glassy / airbrushed look.\n"
         "- 30–55 words. One sentence."
     )
     prompt = (
@@ -253,7 +289,11 @@ async def generate(
         log.debug("human_photo finish: %s", finish.notes)
 
     styled = apply_lut_image(finish.path, cfg)
-    final = apply_watermark(styled, cfg) if cfg.aesthetic.watermark else styled
+    # Film emulation — human faces particularly scream "AI" when they're
+    # too clean (pores perfect, skin glassy). Grain + subtle cast + vignette
+    # rescues perceived realness dramatically.
+    filmic = apply_film_look(styled, cfg)
+    final = apply_watermark(filmic, cfg) if cfg.aesthetic.watermark else filmic
 
     return GeneratedContent(
         format=format_name,

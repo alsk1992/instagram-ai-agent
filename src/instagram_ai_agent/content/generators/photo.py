@@ -11,7 +11,7 @@ import httpx
 
 from instagram_ai_agent.content import image_rank
 from instagram_ai_agent.content.generators.base import GeneratedContent, staging_path
-from instagram_ai_agent.content.style import apply_lut_image, apply_watermark
+from instagram_ai_agent.content.style import apply_film_look, apply_lut_image, apply_watermark
 from instagram_ai_agent.core.config import NicheConfig
 from instagram_ai_agent.core.llm import generate
 from instagram_ai_agent.core.logging_setup import get_logger
@@ -25,12 +25,28 @@ POLLINATIONS_URL = (
 
 
 async def _ideate_prompt(cfg: NicheConfig, trend_context: str) -> str:
+    # Rotate composition hints so consecutive posts don't all centre-frame
+    # their subject — the #1 "AI-looking" visual pattern. Each hint is a
+    # real photographer's framing rule; picking one randomly gives a
+    # varied grid without the LLM having to invent compositions on its own.
+    composition = random.choice([
+        "subject positioned on the left third, negative space to the right, 35mm lens wide aperture",
+        "low-angle shot with leading lines drawing toward the subject, 50mm lens",
+        "subject off-centre in the upper third, long horizontal composition, 85mm lens",
+        "tight close-up at f/1.8, shallow depth of field, subject filling bottom-right quadrant",
+        "rule-of-thirds: subject on a grid intersection, not centre-framed, 35mm",
+        "over-the-shoulder POV, foreground blur, subject at mid-depth, cinematic 50mm",
+        "three-quarter profile, hand/prop in foreground, soft background bokeh, 85mm",
+    ])
     system = (
         f"You craft vivid photography prompts for an Instagram page about {cfg.niche}.\n"
         f"Audience: {cfg.target_audience}. Voice: {cfg.voice.persona}.\n"
         f"Aesthetic palette hint: {', '.join(cfg.aesthetic.palette)}.\n"
-        "Rules: subject + mood + lighting + camera style. No text-on-image. "
-        "Photorealistic. 25–45 words. One sentence. No lists."
+        f"Composition directive (MUST be reflected): {composition}.\n"
+        "Rules: subject + mood + lighting + camera style + composition. No text-on-image. "
+        "Photorealistic. Candid, not posed. Slight imperfection welcome "
+        "(uneven light, mild motion, natural skin texture). 25–45 words. "
+        "One sentence. No lists."
     )
     prompt = f"Trend/idea to riff on:\n{trend_context or '(general niche scene)'}\n\nReturn ONLY the prompt sentence."
     return (await generate("bulk", prompt, system=system, max_tokens=240)).strip().strip('"')
@@ -122,7 +138,11 @@ async def generate_image(
         log.debug("photo finish: %s", finish.notes)
 
     styled = apply_lut_image(finish.path, cfg)
-    final = apply_watermark(styled, cfg)
+    # Film emulation — grain + vignette + colour cast → kills the sterile
+    # AI look. Runs on the LUT-graded result so the grain sits in the
+    # final colour space.
+    filmic = apply_film_look(styled, cfg)
+    final = apply_watermark(filmic, cfg)
 
     return GeneratedContent(
         format="photo",

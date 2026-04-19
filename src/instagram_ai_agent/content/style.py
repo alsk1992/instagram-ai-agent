@@ -1,4 +1,4 @@
-"""Style applicator — palette/font/LUT/watermark consistency across generators."""
+"""Style applicator — palette/font/LUT/watermark/film-look across generators."""
 from __future__ import annotations
 
 import subprocess
@@ -7,6 +7,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from instagram_ai_agent.core.config import FONTS_DIR, LUTS_DIR, NicheConfig
+from instagram_ai_agent.plugins import film_emulation
 
 
 def apply_watermark(image_path: str | Path, cfg: NicheConfig) -> Path:
@@ -42,6 +43,20 @@ def apply_watermark(image_path: str | Path, cfg: NicheConfig) -> Path:
         out = img_p.with_name(img_p.stem + "_wm" + img_p.suffix)
         composed.save(out, quality=94)
         return out
+
+
+def apply_film_look(image_path: str | Path, cfg: NicheConfig) -> Path:
+    """Apply grain + vignette + subtle colour cast so AI outputs look photographed.
+
+    Strength follows ``cfg.aesthetic.film_strength`` (default: medium). This
+    is the single biggest visual-realness lever — raw Flux/SDXL output is
+    sterile and sterile = reads as AI. Called by every generator that
+    ships AI-rendered media (photo, human_photo, AI reel frames).
+    """
+    strength = cfg.aesthetic.film_strength or "medium"
+    if strength == "off":
+        return Path(image_path)
+    return film_emulation.apply_film_look(image_path, strength=strength)
 
 
 def apply_lut_image(image_path: str | Path, cfg: NicheConfig) -> Path:

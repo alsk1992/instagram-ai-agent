@@ -121,6 +121,11 @@ class Aesthetic(BaseModel):
     body_font: str = "Inter"
     lut: str | None = None
     watermark: str | None = None
+    # Film-emulation strength — applied to every AI-generated image so
+    # outputs look photographed, not rendered. Biggest single "doesn't
+    # read as AI" lever on the visual side.
+    # Options: off | subtle | medium | strong. Default medium.
+    film_strength: str = "medium"
 
     @field_validator("palette")
     @classmethod
@@ -128,6 +133,13 @@ class Aesthetic(BaseModel):
         for c in v:
             if not (c.startswith("#") and len(c) in (4, 7)):
                 raise ValueError(f"Invalid hex color: {c}")
+        return v
+
+    @field_validator("film_strength")
+    @classmethod
+    def valid_film_strength(cls, v: str) -> str:
+        if v not in ("off", "subtle", "medium", "strong"):
+            raise ValueError(f"film_strength must be off/subtle/medium/strong, got {v!r}")
         return v
 
 
