@@ -21,9 +21,11 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from instagram_ai_agent.brain import (
     competitor_intel,
+    devto,
     dm_seeder,
     engagement_seeder,
     events as events_mod,
+    hackernews,
     hashtag_discovery,
     news_feed,
     rag,
@@ -31,6 +33,7 @@ from instagram_ai_agent.brain import (
     retro,
     trend_miner,
     watcher,
+    wiki_otd,
 )
 from instagram_ai_agent.content import pipeline as content_pipeline
 from instagram_ai_agent.content.generators import carousel_repurpose
@@ -154,6 +157,24 @@ class Orchestrator:
             await news_feed.run_once(self.cfg)
         except Exception as e:
             log.exception("job_news failed")
+
+    async def job_hackernews(self) -> None:
+        try:
+            await hackernews.run_once(self.cfg)
+        except Exception as e:
+            log.exception("job_hackernews failed")
+
+    async def job_devto(self) -> None:
+        try:
+            await devto.run_once(self.cfg)
+        except Exception as e:
+            log.exception("job_devto failed")
+
+    async def job_wiki_otd(self) -> None:
+        try:
+            await wiki_otd.run_once(self.cfg)
+        except Exception as e:
+            log.exception("job_wiki_otd failed")
 
     def job_hashtag_discovery(self) -> None:
         try:
@@ -334,6 +355,35 @@ class Orchestrator:
                 self.job_news,
                 IntervalTrigger(minutes=40, jitter=300),
                 id="news",
+                max_instances=1,
+                coalesce=True,
+            )
+        # HackerNews Algolia — tech/AI/startup trend seeds. Runs whether
+        # keywords are configured or not: empty keywords = front-page dump.
+        # Lightweight (~50KB JSON) + zero auth, so cheap to always poll.
+        self.scheduler.add_job(
+            self.job_hackernews,
+            IntervalTrigger(minutes=55, jitter=300),
+            id="hackernews",
+            max_instances=1,
+            coalesce=True,
+        )
+        # Dev.to tag feed — only when tags configured (otherwise no-op).
+        if self.cfg.devto_tags:
+            self.scheduler.add_job(
+                self.job_devto,
+                IntervalTrigger(hours=2, jitter=600),
+                id="devto",
+                max_instances=1,
+                coalesce=True,
+            )
+        # Wikipedia On This Day — once a day at midnight UTC + after any
+        # timezone shift. Only active when user opts in.
+        if self.cfg.wiki_otd_enabled:
+            self.scheduler.add_job(
+                self.job_wiki_otd,
+                CronTrigger(hour=0, minute=30, timezone="UTC"),
+                id="wiki_otd",
                 max_instances=1,
                 coalesce=True,
             )
@@ -542,6 +592,11 @@ class Orchestrator:
         # Kick events at startup so a themed day reaches context immediately
         if self.cfg.holidays_enabled or self.cfg.events_calendar:
             asyncio.create_task(self.job_events())
+        # Kick Wikipedia OTD so today's anniversaries are available immediately
+        if self.cfg.wiki_otd_enabled:
+            asyncio.create_task(self.job_wiki_otd())
+        # Kick HN trend feed on boot so first cycle has trend signal
+        asyncio.create_task(self.job_hackernews())
         # Kick Reddit harvester so first-boot context isn't dry for 45 min
         if self.cfg.reddit_enabled and self.cfg.reddit_subs:
             asyncio.create_task(self.job_reddit())

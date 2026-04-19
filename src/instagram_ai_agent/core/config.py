@@ -693,6 +693,12 @@ class NicheConfig(BaseModel):
     watch_targets: list[str] = Field(default_factory=list)  # multi-target watcher
     rss_feeds: list[str] = Field(default_factory=list)     # niche news / current-events feeds
 
+    # Keyless trend feeds — each is a list of niche-relevant tags/topics.
+    # Empty = that feed is disabled. See brain/{hackernews,devto,wiki_otd}.py.
+    hackernews_keywords: list[str] = Field(default_factory=list)
+    devto_tags: list[str] = Field(default_factory=list)
+    wiki_otd_enabled: bool = False
+
     has_gpu: bool = False
     language: str = "en"
 
