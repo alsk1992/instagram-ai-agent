@@ -307,7 +307,7 @@ async def test_carousel_outline_receives_contrarian_flag(monkeypatch):
 
     captured: dict = {}
 
-    async def fake_outline(cfg_, trend, n, *, contrarian=False):
+    async def fake_outline(cfg_, trend, n, *, contrarian=False, slide1=None):
         captured["contrarian"] = contrarian
         return [
             {"kind": "hook", "title": "t1", "body": "b1", "index": 1},

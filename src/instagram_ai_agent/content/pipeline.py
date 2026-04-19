@@ -21,6 +21,7 @@ from instagram_ai_agent.content import critic as critic_mod
 from instagram_ai_agent.content import dedup as dedup_mod
 from instagram_ai_agent.content import hashtags as hashtag_mod
 from instagram_ai_agent.content import specificity_pass
+from instagram_ai_agent.content import story_arc
 from instagram_ai_agent.content.generators import (
     carousel as carousel_gen,
     format_picker,
@@ -293,6 +294,15 @@ async def _build_caption_candidates(
             context=content.caption_context or "",
             knowledge=knowledge or "",
         )
+        # Story-arc pass — convert prescriptive "you should" drafts to
+        # first-person lived-experience framing (on formats where it wins).
+        # Short-circuits when the draft is already story-shaped.
+        if format_name in story_arc.STORY_ARC_FORMATS:
+            caption_body = await story_arc.convert_to_story(
+                cfg, caption_body,
+                context=content.caption_context or "",
+                knowledge=knowledge or "",
+            )
         if format_name.startswith("story_"):
             tags: list[str] = []
             full = caption_body.strip()

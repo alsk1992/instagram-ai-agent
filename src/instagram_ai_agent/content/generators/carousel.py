@@ -4,6 +4,7 @@ from __future__ import annotations
 from html import escape
 from string import Template
 
+from instagram_ai_agent.content import slide1_hook as slide1_mod
 from instagram_ai_agent.content.generators.base import GeneratedContent, staging_path
 from instagram_ai_agent.content.generators.playwright_render import base_css, pick_template, render_html_to_png
 from instagram_ai_agent.content.style import apply_lut_image, apply_watermark
@@ -12,7 +13,12 @@ from instagram_ai_agent.core.llm import generate_json
 
 
 async def _llm_outline(
-    cfg: NicheConfig, trend_context: str, slides: int, *, contrarian: bool = False,
+    cfg: NicheConfig,
+    trend_context: str,
+    slides: int,
+    *,
+    contrarian: bool = False,
+    slide1: "slide1_mod.Slide1Hook | None" = None,
 ) -> list[dict]:
     system = (
         f"You design Instagram carousels for a page about {cfg.niche}.\n"
@@ -37,6 +43,15 @@ async def _llm_outline(
             "- Never touch: medical advice, vaccines, cancer cures, extreme\n"
             "  diets, self-harm, political candidates, ethnic generalisations."
         )
+    # When the upstream slide1_hook stage produced a winner, slide 1 is
+    # locked and the LLM's job is only to build slides 2..N around it.
+    if slide1 is not None:
+        slide1_directive = (
+            "\n\nSLIDE 1 IS LOCKED by an upstream scroll-stop optimiser. "
+            f"Use EXACTLY — title: {slide1.title!r} body: {slide1.body!r}. "
+            "Do not paraphrase. Slides 2..N must deliver on its specific promise."
+        )
+        system += slide1_directive
     prompt = (
         f"Trend/context to riff on:\n{trend_context or '(general niche value-post)'}\n\n"
         f"Produce exactly {slides} slides.\n"
@@ -46,7 +61,8 @@ async def _llm_outline(
     out = data.get("slides") or []
     if not isinstance(out, list) or len(out) < slides:
         raise ValueError(f"LLM returned {len(out)} slides, expected {slides}")
-    return [
+
+    parsed = [
         {
             "kind": str(s.get("kind") or "content"),
             "title": str(s.get("title") or "").strip(),
@@ -55,6 +71,17 @@ async def _llm_outline(
         }
         for i, s in enumerate(out[:slides])
     ]
+    # Hard override — if the upstream winner exists, slide 1 is locked no
+    # matter what the model produced. This protects against models that
+    # "reinterpret" the lock directive.
+    if slide1 is not None and parsed:
+        parsed[0] = {
+            "kind": "hook",
+            "title": slide1.title,
+            "body": slide1.body,
+            "index": 1,
+        }
+    return parsed
 
 
 def _render_slide_html(cfg: NicheConfig, slide: dict, total: int, *, tpl: str) -> str:
@@ -99,7 +126,16 @@ async def generate(
     contrarian: bool = False,
 ) -> GeneratedContent:
     slides = max(3, min(10, slides))
-    outline = await _llm_outline(cfg, trend_context, slides, contrarian=contrarian)
+    # Upstream scroll-stop optimiser: pick the best-of-8 slide 1 hook
+    # before the outline stage locks the rest of the carousel around it.
+    slide1 = await slide1_mod.best_slide1_hook(
+        cfg,
+        trend_context=trend_context,
+        contrarian=contrarian,
+    )
+    outline = await _llm_outline(
+        cfg, trend_context, slides, contrarian=contrarian, slide1=slide1,
+    )
     # Pick ONE template for the whole carousel — every slide stays consistent
     template_name, tpl = pick_template("carousels", variant=variant)
     paths: list[str] = []
@@ -120,5 +156,10 @@ async def generate(
             "Caption must tease the value without giving it away."
         ),
         generator=f"carousel:{template_name}",
-        meta={"slides": outline, "template": template_name},
+        meta={
+            "slides": outline,
+            "template": template_name,
+            "slide1_optimised": slide1 is not None,
+            "slide1_why": slide1.why if slide1 else None,
+        },
     )

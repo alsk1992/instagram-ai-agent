@@ -28,10 +28,19 @@ Score a proposed Instagram post on these dimensions (0.0–1.0):
   originality      not a rehash of prior posts or standard niche tropes
   relevance_now    connects to a current narrative or trend the niche cares about
   competitor_edge  as good or better than what top competitors ship in this niche
+  save_potential   WOULD A USER HIT THE SAVE/BOOKMARK BUTTON?
+                   HIGH (0.8+): practical takeaway, reference-worthy, list or framework,
+                     specific steps/numbers users will come back to.
+                   MID (0.5–0.7): useful but ephemeral, opinion-driven, one-time read.
+                   LOW (<0.4): vibes-only motivational ("you got this"), pure aesthetic
+                     with no takeaway, like-bait content. These MUST score low even if
+                     they "feel good" — Instagram's 2026 algorithm weights saves ~3×
+                     likes, so this dimension is 3× weighted in the overall score.
   dedup_risk       1.0 = clearly distinct from priors; 0.0 = too similar
 
 Also return:
-  overall     weighted mean (on_niche + on_voice + hook + originality + relevance_now + competitor_edge) / 6
+  overall     weighted mean: (on_niche + on_voice + hook + originality +
+              relevance_now + competitor_edge + 3 × save_potential) / 9
   reasons     one-sentence justification
   weak_spots  list of dimension names below 0.55 (for targeted regen)
   verdict     "approve" if overall >= {threshold:.2f}
@@ -173,26 +182,35 @@ async def critique(
         f"Caption:\n{caption}\n"
         f"{recent_block}\n"
         "Return JSON with keys: on_niche, on_voice, hook, originality, relevance_now, "
-        "competitor_edge, dedup_risk, overall, reasons, weak_spots, verdict."
+        "competitor_edge, save_potential, dedup_risk, overall, reasons, weak_spots, verdict."
     )
 
     data = await generate_json("critic", prompt, system=system, max_tokens=600)
     dims = (
         "on_niche", "on_voice", "hook", "originality",
-        "relevance_now", "competitor_edge", "dedup_risk",
+        "relevance_now", "competitor_edge", "save_potential", "dedup_risk",
     )
     out: dict = {d: _clamp(data.get(d)) for d in dims}
     if contrarian:
         out["claim_defensible"] = _clamp(data.get("claim_defensible"))
-    # Recompute overall defensively if LLM forgot
-    if "overall" in data:
-        out["overall"] = _clamp(data.get("overall"))
-    else:
-        core = [out["on_niche"], out["on_voice"], out["hook"], out["originality"],
-                out["relevance_now"], out["competitor_edge"]]
-        if contrarian:
-            core.append(out["claim_defensible"])
-        out["overall"] = sum(core) / len(core)
+    # Recompute overall defensively — LLMs are bad at weighted means in their
+    # heads, so Python computes the canonical score from the individual dims.
+    # save_potential gets 3× weight because Instagram's algorithm weights
+    # saves ~3× likes since 2024, and this is the single biggest free lever.
+    core_weighted = (
+        out["on_niche"]
+        + out["on_voice"]
+        + out["hook"]
+        + out["originality"]
+        + out["relevance_now"]
+        + out["competitor_edge"]
+        + 3 * out["save_potential"]
+    )
+    divisor = 9  # 6 core dims × 1 + save_potential × 3
+    if contrarian:
+        core_weighted += out["claim_defensible"]
+        divisor += 1
+    out["overall"] = core_weighted / divisor
     out["reasons"] = str(data.get("reasons") or "")[:500]
     weak = data.get("weak_spots") or []
     if isinstance(weak, str):

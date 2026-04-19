@@ -243,7 +243,7 @@ async def test_carousel_uses_one_template_for_all_slides(monkeypatch: pytest.Mon
     from instagram_ai_agent.content.generators import carousel as carousel_mod
 
     # Stub the LLM outline + rendering
-    async def fake_outline(cfg, trend, n, *, contrarian=False):
+    async def fake_outline(cfg, trend, n, *, contrarian=False, slide1=None):
         return [{"kind": "hook" if i == 0 else "content", "title": f"t{i}", "body": f"b{i}", "index": i + 1} for i in range(n)]
 
     async def fake_render(html, out, *, width, height, deviceScaleFactor=2):
