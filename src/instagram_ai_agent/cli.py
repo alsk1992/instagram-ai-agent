@@ -408,66 +408,109 @@ def init(
 # ───────── one-command setup ─────────
 @app.command()
 def setup(
-    with_login: bool = typer.Option(False, "--with-login", help="Also prompt for Instagram credentials inline"),
+    full: bool = typer.Option(False, "--full", help="Customise voice / palette / hashtags / format mix / schedule / optional providers"),
     minimal: bool = typer.Option(False, "--minimal", help="Take preset defaults for everything except niche name"),
+    with_login: bool = typer.Option(False, "--with-login", help="Also prompt for Instagram credentials inline"),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing niche.yaml without asking"),
 ) -> None:
-    """One-command setup. Deps → niche → free AI key → seed. ~2 minutes to first post.
+    """One-command setup. Two paths:
 
-    Replaces the 40-question ``init`` wizard with 4 questions. Everything else
-    uses preset defaults (editable later in niche.yaml). Runs ``playwright
-    install chromium`` automatically if it's missing; detects ffmpeg and prints
-    the exact install command if it's not on PATH.
+    * default (quick): 4 questions, everything else preset defaults. ~2 minutes.
+    * ``--full``: extends quick with voice, palette, hashtags, format mix,
+      schedule, optional providers, inline IG login. ~5 minutes.
+
+    Auto-installs Playwright chromium if missing. Detects ffmpeg and prints
+    the exact install command if it's not on PATH. Validates the OpenRouter
+    key live before exiting. Refuses to overwrite an existing ``niche.yaml``
+    without ``--force`` or explicit confirmation.
     """
+    if full and minimal:
+        console.print("[red]✗[/red] --full and --minimal are mutually exclusive.")
+        raise typer.Exit(2)
+
     ensure_dirs()
 
-    console.rule("[bold cyan]ig-agent setup")
-    console.print(
-        "[dim]One command — deps → niche → free AI key → done. "
-        "~2 minutes to your first generated post.[/dim]\n"
-    )
+    mode_label = "full" if full else ("minimal" if minimal else "quick")
+    n_steps = 5 if full else 4
 
-    # ─── Step 1 / 4 — system deps ─────────────────────────────
-    console.print("[bold]Step 1/4[/bold] — checking system dependencies")
+    console.rule(f"[bold cyan]ig-agent setup[/bold cyan]  [dim]({mode_label})[/dim]")
+    if full:
+        console.print(
+            "[dim]Deep customisation path — voice, palette, hashtags, formats, "
+            "schedule, optional providers. ~5 minutes.[/dim]\n"
+        )
+    else:
+        console.print(
+            "[dim]Quick path — 4 questions, preset defaults for the rest. "
+            "~2 minutes. Run with [bold]--full[/bold] for deep customisation.[/dim]\n"
+        )
+
+    # ─── Existing niche.yaml guard ─────────────────────────────
+    if NICHE_PATH.exists() and not force:
+        console.print(
+            f"[yellow]⚠[/yellow] {NICHE_PATH.name} already exists at {NICHE_PATH}."
+        )
+        if not Confirm.ask("  Overwrite? (existing values will be lost)", default=False):
+            console.print(
+                "  [dim]Aborted. Use [bold]--force[/bold] to skip this prompt, "
+                "or edit [italic]niche.yaml[/italic] directly.[/dim]"
+            )
+            raise typer.Exit(0)
+
+    # ─── Existing .env warning ─────────────────────────────────
+    existing_keys = _existing_env_keys()
+    if existing_keys:
+        console.print(
+            f"[dim]Keeping existing .env keys (not overwriting): "
+            f"{', '.join(sorted(existing_keys))}[/dim]\n"
+        )
+
+    # ─── Step 1 — system deps ─────────────────────────────────
+    console.print(f"[bold]Step 1/{n_steps}[/bold] — checking system dependencies")
     _setup_check_deps()
 
-    # ─── Step 2 / 4 — niche (preset + 4 questions) ────────────
-    console.print("\n[bold]Step 2/4[/bold] — pick your niche (4 quick questions)")
+    # ─── Step 2 — niche ───────────────────────────────────────
+    console.print(f"\n[bold]Step 2/{n_steps}[/bold] — pick your niche")
     cfg = _setup_pick_niche(minimal=minimal)
 
-    # ─── Step 3 / 4 — free AI provider key ────────────────────
-    console.print("\n[bold]Step 3/4[/bold] — free AI provider (1 key, 30s)")
+    # ─── Step 3 (full only) — customisation ───────────────────
+    step_num = 2
+    if full:
+        step_num += 1
+        console.print(f"\n[bold]Step {step_num}/{n_steps}[/bold] — customise voice, palette, hashtags, format mix, schedule")
+        cfg = _setup_full_customise(cfg)
+
+    # ─── Next step — free AI provider key ─────────────────────
+    step_num += 1
+    console.print(f"\n[bold]Step {step_num}/{n_steps}[/bold] — free AI provider (1 key, 30s)")
     api_key = _setup_get_openrouter_key()
 
-    # ─── Optional — IG login (deferred by default) ────────────
+    # Optional extra providers (full mode only)
+    extra_keys: dict[str, str] = {}
+    if full:
+        extra_keys = _setup_optional_providers()
+
+    # ─── IG login (optional) ─────────────────────────────────
     ig_user, ig_pass = "", ""
-    if with_login:
-        console.print("\n[bold]Instagram credentials[/bold]")
-        ig_user = questionary.text("Instagram username:").ask() or ""
-        ig_pass = questionary.password("Instagram password:").ask() or ""
+    if with_login or full:
+        want_ig = with_login or questionary.confirm(
+            "Configure Instagram login now? (optional — can defer to `ig-agent login`)",
+            default=False,
+        ).ask()
+        if want_ig:
+            ig_user = questionary.text("Instagram username:").ask() or ""
+            ig_pass = questionary.password("Instagram password:").ask() or ""
 
-    # ─── Step 4 / 4 — save + seed ─────────────────────────────
-    console.print("\n[bold]Step 4/4[/bold] — saving config + seeding brain")
-    save_niche(cfg)
-    console.print(f"  [green]✓[/green] niche.yaml  → {NICHE_PATH}")
-
-    env_updates = {"OPENROUTER_API_KEY": api_key}
-    if ig_user:
-        env_updates["IG_USERNAME"] = ig_user
-    if ig_pass:
-        env_updates["IG_PASSWORD"] = ig_pass
-    _write_env(env_updates)
-    console.print(f"  [green]✓[/green] .env        → {ENV_PATH}")
-
-    db.init_db()
-    console.print("  [green]✓[/green] brain.db    → initialised")
-
-    try:
-        from instagram_ai_agent.brain import idea_bank
-        n_seeded = idea_bank.seed_from_file()
-        if n_seeded > 0:
-            console.print(f"  [green]✓[/green] idea bank  → {n_seeded} archetypes seeded")
-    except Exception as e:
-        console.print(f"  [yellow]⚠[/yellow] idea-bank seed skipped: {e}")
+    # ─── Final step — save + seed + verify ────────────────────
+    step_num += 1
+    console.print(f"\n[bold]Step {step_num}/{n_steps}[/bold] — saving + seeding + verifying")
+    _setup_save_and_verify(
+        cfg,
+        api_key=api_key,
+        extra_keys=extra_keys,
+        ig_user=ig_user,
+        ig_pass=ig_pass,
+    )
 
     # ─── Summary + next steps ────────────────────────────────
     console.rule("[bold green]you're set")
@@ -480,10 +523,200 @@ def setup(
     console.print("  [bold cyan]ig-agent generate -n 3[/bold cyan]    make your first 3 posts (~2 min)")
     console.print("  [bold cyan]ig-agent review[/bold cyan]           walk + approve each")
     console.print("  [bold cyan]ig-agent dashboard[/bold cyan]        browse everything in a web UI")
-    console.print(
-        "\n[dim]Edit [italic]niche.yaml[/italic] anytime for deep config "
-        "(story mix, hashtag pools, safety caps, anti-detection toggles).[/dim]"
+    if not full:
+        console.print(
+            "\n[dim]Want to customise voice/palette/hashtags/schedule? "
+            "Re-run [bold]ig-agent setup --full[/bold] or edit [italic]niche.yaml[/italic].[/dim]"
+        )
+
+
+def _existing_env_keys() -> set[str]:
+    """Return the set of keys currently present in .env (if any)."""
+    if not ENV_PATH.exists():
+        return set()
+    keys: set[str] = set()
+    for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k = line.partition("=")[0].strip()
+        if k:
+            keys.add(k)
+    return keys
+
+
+def _setup_full_customise(cfg: NicheConfig) -> NicheConfig:
+    """Full-mode extras: voice tone, forbidden words, palette, hashtags,
+    format mix, schedule, posts-per-day. Each question shows the preset-
+    derived default so Enter accepts it."""
+    # Voice
+    tone = _split(
+        questionary.text(
+            "Voice tone (comma-separated):",
+            default=", ".join(cfg.voice.tone),
+        ).ask() or ", ".join(cfg.voice.tone)
+    ) or list(cfg.voice.tone)
+    forbidden = _split(
+        questionary.text(
+            "Words/phrases to NEVER use (comma-separated, optional):",
+            default=", ".join(cfg.voice.forbidden),
+        ).ask() or ", ".join(cfg.voice.forbidden)
     )
+    # CTA styles
+    cta_default = ", ".join(cfg.voice.cta_styles) if cfg.voice.cta_styles else "save for later, tag a mate, follow for more"
+    cta_styles = _split(
+        questionary.text("Preferred CTAs (comma-separated):", default=cta_default).ask() or cta_default
+    ) or ["save for later"]
+
+    # Aesthetic
+    palette = _split(
+        questionary.text(
+            "Palette (3–5 hex colours, comma-separated):",
+            default=", ".join(cfg.aesthetic.palette),
+        ).ask() or ", ".join(cfg.aesthetic.palette)
+    ) or list(cfg.aesthetic.palette)
+    watermark = questionary.text(
+        "Watermark (usually your @handle, optional):",
+        default=cfg.aesthetic.watermark or "",
+    ).ask() or None
+
+    # Hashtags
+    core_default = ", ".join(cfg.hashtags.core)
+    core = _split(
+        questionary.text("Core hashtags (comma-separated, min 3):", default=core_default).ask()
+        or core_default
+    )
+    while len(core) < 3:
+        core.append(f"niche{len(core)}")
+    growth_default = ", ".join(cfg.hashtags.growth)
+    growth = _split(
+        questionary.text("Growth hashtags (comma-separated, optional):", default=growth_default).ask()
+        or growth_default
+    )
+
+    # Format mix — checkbox
+    current_weights = cfg.formats.model_dump()
+    active_formats = [name for name, w in current_weights.items() if w > 0 and name != "story_carousel"]
+    format_choices = questionary.checkbox(
+        "Feed post formats allowed:",
+        choices=[
+            questionary.Choice(name, checked=(name in active_formats))
+            for name in ("meme", "quote_card", "carousel", "reel_stock", "reel_ai", "photo")
+        ],
+    ).ask() or active_formats
+    formats = _even_mix(format_choices)
+
+    # Schedule
+    posts_per_day = int(
+        questionary.text(
+            "Posts per day (0–5, 1 is safest for fresh accounts):",
+            default=str(cfg.schedule.posts_per_day),
+            validate=_is_int_in(0, 5),
+        ).ask()
+    )
+    hours_default = ", ".join(str(h) for h in cfg.schedule.best_hours_utc)
+    hours_str = questionary.text(
+        "Best hours UTC (comma-separated, when your audience is active):",
+        default=hours_default,
+    ).ask() or hours_default
+    best_hours = [int(h) for h in re.findall(r"\d+", hours_str) if 0 <= int(h) <= 23] or list(cfg.schedule.best_hours_utc)
+
+    return cfg.model_copy(update={
+        "voice": Voice(
+            tone=tone,
+            forbidden=forbidden,
+            persona=cfg.voice.persona,
+            cta_styles=cta_styles,
+        ),
+        "aesthetic": Aesthetic(
+            palette=palette,
+            heading_font=cfg.aesthetic.heading_font,
+            body_font=cfg.aesthetic.body_font,
+            watermark=watermark,
+        ),
+        "hashtags": HashtagPools(
+            core=core,
+            growth=growth,
+            long_tail=cfg.hashtags.long_tail,
+            per_post=cfg.hashtags.per_post,
+        ),
+        "formats": formats,
+        "schedule": Schedule(
+            posts_per_day=posts_per_day,
+            stories_per_day=cfg.schedule.stories_per_day,
+            best_hours_utc=best_hours,
+        ),
+    })
+
+
+def _setup_optional_providers() -> dict[str, str]:
+    """Prompt for additional free-tier provider keys. All are optional —
+    OpenRouter alone is enough to run the agent."""
+    console.print(
+        "  [dim]OpenRouter alone works. These are fallbacks for when OpenRouter's "
+        "free tier quotas hit — agent auto-routes across providers.[/dim]"
+    )
+    keys: dict[str, str] = {}
+    groq = questionary.password("GROQ_API_KEY (optional, https://console.groq.com):").ask() or ""
+    if groq.strip():
+        keys["GROQ_API_KEY"] = groq.strip()
+    gemini = questionary.password("GEMINI_API_KEY (optional, https://aistudio.google.com):").ask() or ""
+    if gemini.strip():
+        keys["GEMINI_API_KEY"] = gemini.strip()
+    return keys
+
+
+def _setup_save_and_verify(
+    cfg: NicheConfig,
+    *,
+    api_key: str,
+    extra_keys: dict[str, str],
+    ig_user: str,
+    ig_pass: str,
+) -> None:
+    """Persist config + verify the write succeeded by reloading from disk."""
+    save_niche(cfg)
+    console.print(f"  [green]✓[/green] niche.yaml  → {NICHE_PATH}")
+
+    env_updates: dict[str, str] = {}
+    if api_key:
+        env_updates["OPENROUTER_API_KEY"] = api_key
+    env_updates.update(extra_keys)
+    if ig_user:
+        env_updates["IG_USERNAME"] = ig_user
+    if ig_pass:
+        env_updates["IG_PASSWORD"] = ig_pass
+    _write_env(env_updates)
+    written_keys = sorted(k for k, v in env_updates.items() if v)
+    console.print(f"  [green]✓[/green] .env        → {ENV_PATH}"
+                  + (f"  [dim](wrote: {', '.join(written_keys)})[/dim]" if written_keys else ""))
+
+    try:
+        db.init_db()
+        console.print("  [green]✓[/green] brain.db    → initialised")
+    except Exception as e:
+        console.print(f"  [red]✗[/red] brain.db init FAILED: {e}")
+        raise typer.Exit(1)
+
+    try:
+        from instagram_ai_agent.brain import idea_bank
+        n_seeded = idea_bank.seed_from_file()
+        if n_seeded > 0:
+            console.print(f"  [green]✓[/green] idea bank  → {n_seeded} archetypes seeded")
+        else:
+            console.print("  [dim]idea bank already seeded (no-op)[/dim]")
+    except Exception as e:
+        console.print(f"  [yellow]⚠[/yellow] idea-bank seed skipped: {e}")
+
+    # ─── Post-save verification ────────────────────────────────
+    # Reload niche.yaml from disk to confirm the write is parseable.
+    try:
+        loaded = load_niche()
+        assert loaded.niche == cfg.niche
+        console.print("  [green]✓[/green] verified    → niche.yaml round-trips cleanly")
+    except Exception as e:
+        console.print(f"  [red]✗[/red] niche.yaml reload FAILED: {e}")
+        raise typer.Exit(1)
 
 
 def _setup_check_deps() -> None:
@@ -535,22 +768,39 @@ def _ffmpeg_install_cmd() -> str:
 
 
 def _playwright_chromium_installed() -> bool:
-    """True when the chromium browser binary is present — fast filesystem
-    check beats invoking playwright's Python API."""
+    """True when the chromium browser binary is ACTUALLY present and launchable.
+
+    We check both that the browser directory exists AND that the headless
+    shell binary inside it is a real file. Playwright leaves the dir behind
+    if an install is interrupted (Ctrl-C or disk-full) — just checking the
+    dir would incorrectly report success after a broken install.
+    """
     try:
         from playwright._impl._driver import compute_driver_executable  # noqa: F401
     except Exception:
         return False
     # Playwright drops browsers under ~/.cache/ms-playwright on Linux/macOS,
     # %USERPROFILE%\AppData\Local\ms-playwright on Windows.
-    candidates = []
-    home = Path.home()
-    candidates.append(home / ".cache" / "ms-playwright")
-    candidates.append(home / "AppData" / "Local" / "ms-playwright")
-    candidates.append(home / "Library" / "Caches" / "ms-playwright")
+    candidates = [
+        Path.home() / ".cache" / "ms-playwright",
+        Path.home() / "AppData" / "Local" / "ms-playwright",
+        Path.home() / "Library" / "Caches" / "ms-playwright",
+    ]
+    browser_bins = [
+        "chrome-linux/headless_shell",
+        "chrome-linux/chrome",
+        "chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+        "chrome-mac/Chromium.app/Contents/MacOS/Chromium Headless Shell",
+        "chrome-win/chrome.exe",
+        "chrome-win/headless_shell.exe",
+    ]
     for root in candidates:
-        if root.is_dir() and any(root.glob("chromium-*")):
-            return True
+        if not root.is_dir():
+            continue
+        for browser_dir in root.glob("chromium-*"):
+            for rel in browser_bins:
+                if (browser_dir / rel).exists():
+                    return True
     return False
 
 
