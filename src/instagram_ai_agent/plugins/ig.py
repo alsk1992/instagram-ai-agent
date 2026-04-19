@@ -347,6 +347,11 @@ class IGClient:
                     )
             try:
                 self.cl.login_by_sessionid(self._cookie_seed["sessionid"])
+                # Probe the session — login_by_sessionid does a user_info_v1
+                # internally but that isn't a write-path validation. Hit
+                # get_timeline_feed like the other paths so stale sessionids
+                # surface here (LoginRequired) rather than later at post time.
+                self.cl.get_timeline_feed()
                 self._logged_in = True
                 self.cl.dump_settings(str(self.session_path))
                 log.info("Logged in via IG_SESSIONID for %s", self.username)

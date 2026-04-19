@@ -106,11 +106,31 @@ For deep configuration (story mix, hashtag pools, anti-detection toggles), use `
 </details>
 
 <details>
-<summary><strong>First-time Instagram setup</strong> — how it keeps your account safe</summary>
+<summary><strong>Two auth paths — which one to pick</strong></summary>
 
-- **Brand-new account?** Leave the warmup setting alone. The agent waits ~7 days before posting, then slowly increases activity over 14 days — this is the single biggest thing that prevents Instagram from banning automated accounts. Use this time to run `generate` + `review` so you have content queued and ready.
-- **Account that already posts regularly?** Set `IG_SKIP_WARMUP=1` in `.env` — it'll post immediately.
-- **Posting from a VPS or a new IP?** Instagram will often send an email-code challenge the first time. You can either let the agent read your Gmail (set `IMAP_HOST/USER/PASS`), paste a browser cookie to skip the challenge, or run `ig-agent login` in a terminal and type the code manually. Details in the [Safety section](#%EF%B8%8F-safety--anti-detection).
+| Where you're running | Auth path | Why |
+|---|---|---|
+| **Laptop / home WiFi** | Plain username + password | Home IPs are trusted by Instagram's risk model. `setup --with-login` captures both, first `ig-agent login` call succeeds on u/p ~95% of the time. |
+| **VPS / server / cloud** | Cookie jar from your browser | Fresh u/p from a datacenter IP triggers `challenge_required` on the `/auth_platform/?apc=...` flow almost every time in 2026. Cookie-jar path uses `cl.set_settings()` and skips `/login` entirely — zero challenge surface. |
+
+**VPS cookie capture (2026 consensus)** — the setup wizard guides you:
+
+1. Install [**Cookie-Editor**](https://cookie-editor.com) (Chrome/Firefox/Edge — Manifest V3)
+2. Log into instagram.com in that same browser
+3. Click Cookie-Editor icon → **Export** → **JSON**
+4. Run `ig-agent setup --with-login`, pick the VPS branch, paste the JSON blob
+5. Wizard parses, validates live against `accounts/current_user`, saves to `.env` — only if cookies actually work
+
+Grab a **residential or 4G mobile proxy** on the same ASN as the cookie extraction before the first run — cookies harvested at home running through a datacenter IP get invalidated fast.
+
+</details>
+
+<details>
+<summary><strong>Fresh-account warmup + email-code challenges</strong></summary>
+
+- **Brand-new account?** Leave the warmup setting alone. The agent waits ~7 days before posting, then slowly increases activity over 14 days — the single biggest lever preventing Instagram from banning automated accounts. Queue content during this time.
+- **Account that already posts regularly?** Set `IG_SKIP_WARMUP=1` in `.env` — posts immediately.
+- **Email-code challenge during login?** Either type it manually in the terminal, or set `IMAP_HOST/USER/PASS` in `.env` (Gmail users: use an app password) and the agent reads the code automatically.
 
 </details>
 

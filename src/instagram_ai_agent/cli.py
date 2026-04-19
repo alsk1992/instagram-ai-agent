@@ -508,14 +508,29 @@ def setup(
 
     # ─── IG login (optional) ─────────────────────────────────
     ig_user, ig_pass = "", ""
+    cookie_env: dict[str, str] = {}
     if with_login or full:
         want_ig = with_login or questionary.confirm(
             "Configure Instagram login now? (optional — can defer to `ig-agent login`)",
             default=False,
         ).ask()
         if want_ig:
-            ig_user = questionary.text("Instagram username:").ask() or ""
-            ig_pass = questionary.password("Instagram password:").ask() or ""
+            # Branch on environment — cookies are the 2026 consensus for VPS /
+            # server deployments; plain u/p only survives on trusted home IPs.
+            # See docs in .env.example Phase 2.
+            method = questionary.select(
+                "Where will the agent run?",
+                choices=[
+                    "laptop / home WiFi — plain u/p is fine",
+                    "VPS / server / new IP — paste browser cookie jar (recommended for 2026)",
+                ],
+            ).ask()
+            is_vps = method and "VPS" in method
+            if is_vps:
+                ig_user, cookie_env = _setup_capture_cookies()
+            else:
+                ig_user = questionary.text("Instagram username:").ask() or ""
+                ig_pass = questionary.password("Instagram password:").ask() or ""
 
     # ─── Final step — save + seed + verify ────────────────────
     step_num += 1
@@ -523,21 +538,25 @@ def setup(
     _setup_save_and_verify(
         cfg,
         api_key=api_key,
-        extra_keys=extra_keys,
+        extra_keys={**extra_keys, **cookie_env},
         ig_user=ig_user,
         ig_pass=ig_pass,
     )
 
-    # ─── Auto-login when credentials were captured ────────────
+    # ─── Auto-login when credentials OR cookies were captured ────
     # Chain setup → login → (optional) run so `ig-agent setup --with-login --run`
     # is TRULY one-command: the user walks away after this single invocation.
+    # Cookie-jar path skips /login entirely (set_settings); u/p path logs in normally.
     logged_in = False
-    if ig_user and ig_pass:
+    if ig_user and (ig_pass or cookie_env):
         console.print("\n[bold]Verifying Instagram session…[/bold]")
-        # Reload env so the new IG creds are visible to IGClient
+        # Reload env so the new IG creds / cookies are visible to IGClient
         load_env()
         os.environ["IG_USERNAME"] = ig_user
-        os.environ["IG_PASSWORD"] = ig_pass
+        if ig_pass:
+            os.environ["IG_PASSWORD"] = ig_pass
+        for k, v in cookie_env.items():
+            os.environ[k] = v
         try:
             from instagram_ai_agent.plugins.ig import IGClient
             cl = IGClient()
@@ -550,7 +569,7 @@ def setup(
                 "  [dim]Finish manually with [bold]ig-agent login[/bold] — "
                 "common causes: email-code challenge (paste the code when prompted), "
                 "bad_password-false-positive on new IP (add IG_PROXY or IG_SESSIONID "
-                "to .env).[/dim]"
+                "to .env), stale cookies (re-extract from your browser).[/dim]"
             )
 
     # ─── Summary + next steps ────────────────────────────────
@@ -995,6 +1014,206 @@ def _setup_get_openrouter_key() -> str:
 
     console.print("  [yellow]⚠[/yellow] Proceeding without a validated key — you can edit .env later.")
     return ""
+
+
+# ─── Cookie-jar capture (VPS path) ─────────────────────────────
+# Maps Cookie-Editor exported names (lowercase, same as DevTools rows) to
+# the IG_* env vars the agent reads. Kept exhaustive to match plugins/ig.py.
+_COOKIE_NAME_TO_ENV: dict[str, str] = {
+    "sessionid":   "IG_SESSIONID",
+    "ds_user_id":  "IG_DS_USER_ID",
+    "csrftoken":   "IG_CSRFTOKEN",
+    "mid":         "IG_MID",
+    "ig_did":      "IG_DID",
+    "datr":        "IG_DATR",
+    "rur":         "IG_RUR",
+    "shbid":       "IG_SHBID",
+    "shbts":       "IG_SHBTS",
+    "ig_nrcb":     "IG_NRCB",
+    "wd":          "IG_WD",
+    "dpr":         "IG_DPR",
+    "ig_lang":     "IG_IG_LANG",
+    "ps_l":        "IG_PS_L",
+    "ps_n":        "IG_PS_N",
+    "mcd":         "IG_MCD",
+    "ccode":       "IG_CCODE",
+}
+
+# Minimum set required for the agent to skip the /login call entirely
+# (full-jar path in plugins/ig.py:_has_full_cookie_set).
+_COOKIE_REQUIRED = {"sessionid", "ds_user_id", "csrftoken"}
+
+
+def _parse_cookie_editor_json(raw: str) -> dict[str, str]:
+    """Parse a Cookie-Editor / EditThisCookie export blob.
+
+    Accepts the JSON array shape the extension exports: list of dicts with
+    ``name``, ``value``, ``domain``, plus optional ``httpOnly``/``secure``/
+    ``sameSite``/``expirationDate`` fields. Filters to instagram.com domains,
+    maps known names to IG_* env var names, returns dict suitable for .env.
+
+    Raises ValueError on malformed input or when required cookies are missing.
+    """
+    import json as _json
+
+    s = raw.strip()
+    if not s:
+        raise ValueError("empty input — paste the Cookie-Editor JSON export")
+
+    # Users sometimes paste with surrounding fences / labels — strip common variants
+    if s.startswith("```"):
+        s = s.strip("`").partition("\n")[2].rstrip("`").strip()
+
+    try:
+        data = _json.loads(s)
+    except _json.JSONDecodeError as e:
+        raise ValueError(
+            f"not valid JSON: {e}. Make sure you clicked Cookie-Editor → "
+            "Export → JSON (not Netscape) and pasted the whole blob."
+        ) from e
+
+    if not isinstance(data, list):
+        raise ValueError(
+            "expected a JSON array (Cookie-Editor's JSON format). "
+            "Try exporting again — click the extension → Export dropdown → JSON."
+        )
+
+    env: dict[str, str] = {}
+    seen: set[str] = set()
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        domain = str(row.get("domain") or "").lstrip(".").lower()
+        if "instagram.com" not in domain:
+            continue
+        name = str(row.get("name") or "").strip()
+        value = str(row.get("value") or "")
+        if not name or not value:
+            continue
+        env_name = _COOKIE_NAME_TO_ENV.get(name.lower())
+        if env_name:
+            env[env_name] = value
+            seen.add(name.lower())
+
+    missing = _COOKIE_REQUIRED - seen
+    if missing:
+        raise ValueError(
+            f"missing required cookie(s): {', '.join(sorted(missing))}. "
+            "Log into instagram.com in the same browser first (you need to be "
+            "actively logged in), then re-export."
+        )
+    return env
+
+
+def _validate_cookie_jar(env: dict[str, str]) -> tuple[bool, str]:
+    """Live ping instagram.com/api/v1/accounts/current_user/?edit=true with the
+    pasted cookies. 200 = alive. 401/403 = dead cookies, user must re-extract.
+
+    Per the 2026 research: this endpoint is a profile READ (not state-change)
+    so validation doesn't burn budget or trigger challenges."""
+    try:
+        import httpx
+        cookies = {
+            "sessionid":  env.get("IG_SESSIONID", ""),
+            "ds_user_id": env.get("IG_DS_USER_ID", ""),
+            "csrftoken":  env.get("IG_CSRFTOKEN", ""),
+            "mid":        env.get("IG_MID", ""),
+            "ig_did":     env.get("IG_DID", ""),
+            "rur":        env.get("IG_RUR", ""),
+        }
+        headers = {
+            "User-Agent": env.get(
+                "IG_USER_AGENT",
+                # Safe mobile Android default matching instagrapi's build_user_agent
+                "Instagram 381.0.0.48.119 Android (34/14; 420dpi; 1080x2340; "
+                "samsung; SM-S918B; dm3q; qcom; en_GB; 697519287)",
+            ),
+            "X-IG-App-ID": "936619743392459",  # canonical mobile web app id
+        }
+        r = httpx.get(
+            "https://i.instagram.com/api/v1/accounts/current_user/?edit=true",
+            cookies=cookies,
+            headers=headers,
+            timeout=10.0,
+            follow_redirects=False,
+        )
+    except Exception as e:
+        return False, f"network error: {e}"
+    if r.status_code == 200:
+        try:
+            username = (r.json() or {}).get("user", {}).get("username") or "?"
+        except Exception:
+            username = "?"
+        return True, f"logged in as @{username}"
+    if r.status_code in (401, 403):
+        return False, f"cookies rejected (HTTP {r.status_code}) — likely stale or UA mismatch"
+    return False, f"unexpected HTTP {r.status_code}"
+
+
+def _setup_capture_cookies() -> tuple[str, dict[str, str]]:
+    """Guided cookie-jar capture — the 2026 VPS-safe auth path.
+
+    Returns (username, env_var_dict). Username is needed so the agent can
+    name the session file correctly even though /login is never called.
+    """
+    console.print(
+        "[bold]Cookie-jar capture[/bold] — 2026 best practice for VPS / server deployments."
+    )
+    console.print(
+        "  [dim]Web-based logins from a fresh server IP almost always trigger "
+        "challenges. Pasting a valid cookie jar from a browser where you're "
+        "already logged in skips the login call entirely — zero challenge surface.[/dim]\n"
+    )
+    console.print("  [bold]Steps:[/bold]")
+    console.print("    1. Install [bold]Cookie-Editor[/bold] → [cyan]https://cookie-editor.com[/cyan]")
+    console.print("    2. Log into [cyan]https://instagram.com[/cyan] in that browser")
+    console.print("    3. Click the Cookie-Editor icon → [bold]Export[/bold] dropdown → [bold]JSON[/bold]")
+    console.print("    4. Paste the full export below when prompted")
+    console.print()
+
+    ig_user = questionary.text(
+        "Instagram username (for session-file naming):",
+        validate=lambda x: len(x.strip()) >= 1 or "required",
+    ).ask() or ""
+    ig_user = ig_user.strip().lstrip("@")
+
+    for attempt in range(3):
+        blob = questionary.text(
+            "Paste the Cookie-Editor JSON export (then press Enter):",
+            multiline=True,
+        ).ask() or ""
+
+        try:
+            env = _parse_cookie_editor_json(blob)
+        except ValueError as e:
+            console.print(f"  [red]✗[/red] {e}")
+            if attempt < 2 and Confirm.ask("  Try pasting again?", default=True):
+                continue
+            return ig_user, {}
+
+        found = [k for k in _COOKIE_NAME_TO_ENV.values() if k in env]
+        console.print(f"  [green]✓[/green] Parsed {len(found)} cookies: {', '.join(found)}")
+
+        # Optional UA pin — matters massively for cookie-jar path survival
+        ua = questionary.text(
+            "User agent to pin (leave blank to auto-derive from device.json):",
+            default="",
+        ).ask() or ""
+        if ua.strip():
+            env["IG_USER_AGENT"] = ua.strip()
+
+        ok, msg = _validate_cookie_jar(env)
+        if ok:
+            console.print(f"  [green]✓[/green] Live validation passed — {msg}")
+            return ig_user, env
+        console.print(f"  [red]✗[/red] Live validation failed — {msg}")
+        if attempt < 2 and Confirm.ask("  Re-export cookies and try again?", default=True):
+            continue
+        if Confirm.ask("  Save the cookies anyway and continue?", default=False):
+            return ig_user, env
+        return ig_user, {}
+
+    return ig_user, {}
 
 
 def _validate_openrouter_key(key: str) -> tuple[bool, str]:
