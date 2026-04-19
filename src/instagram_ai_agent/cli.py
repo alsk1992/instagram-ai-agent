@@ -410,9 +410,10 @@ def init(
 def setup(
     full: bool = typer.Option(False, "--full", help="Customise voice / palette / hashtags / format mix / schedule / optional providers"),
     minimal: bool = typer.Option(False, "--minimal", help="Take preset defaults for everything except niche name"),
-    with_login: bool = typer.Option(False, "--with-login", help="Also prompt for Instagram credentials inline"),
+    with_login: bool = typer.Option(False, "--with-login", help="Also prompt for Instagram credentials inline + verify the session"),
     force: bool = typer.Option(False, "--force", help="Overwrite existing niche.yaml without asking"),
     review: bool = typer.Option(False, "--review", help="Opt-in guardrail: queue each post for one-click approval at /review before it goes live. Default is fully autonomous."),
+    run_after: bool = typer.Option(False, "--run", help="After setup + login succeed, start the orchestrator daemon — one command, walk away"),
 ) -> None:
     """One-command setup. Two paths:
 
@@ -527,6 +528,31 @@ def setup(
         ig_pass=ig_pass,
     )
 
+    # ─── Auto-login when credentials were captured ────────────
+    # Chain setup → login → (optional) run so `ig-agent setup --with-login --run`
+    # is TRULY one-command: the user walks away after this single invocation.
+    logged_in = False
+    if ig_user and ig_pass:
+        console.print("\n[bold]Verifying Instagram session…[/bold]")
+        # Reload env so the new IG creds are visible to IGClient
+        load_env()
+        os.environ["IG_USERNAME"] = ig_user
+        os.environ["IG_PASSWORD"] = ig_pass
+        try:
+            from instagram_ai_agent.plugins.ig import IGClient
+            cl = IGClient()
+            cl.login()
+            console.print(f"  [green]✓[/green] IG session persisted → {cl.session_path}")
+            logged_in = True
+        except Exception as e:
+            console.print(f"  [yellow]⚠[/yellow] Auto-login failed ({type(e).__name__}): {e}")
+            console.print(
+                "  [dim]Finish manually with [bold]ig-agent login[/bold] — "
+                "common causes: email-code challenge (paste the code when prompted), "
+                "bad_password-false-positive on new IP (add IG_PROXY or IG_SESSIONID "
+                "to .env).[/dim]"
+            )
+
     # ─── Summary + next steps ────────────────────────────────
     console.rule("[bold green]you're set")
     if not ig_user:
@@ -534,7 +560,31 @@ def setup(
             "[dim]Instagram login deferred — run [bold]ig-agent login[/bold] when "
             "you're ready. You can generate + review posts without it.[/dim]\n"
         )
+    elif not logged_in:
+        console.print(
+            "[dim]IG creds saved but session not yet created. Run "
+            "[bold]ig-agent login[/bold] to finish.[/dim]\n"
+        )
+
+    # ─── Auto-start the orchestrator if requested ─────────────
+    if run_after:
+        if not logged_in and ig_user:
+            console.print(
+                "[yellow]⚠[/yellow] --run requested but login didn't succeed. "
+                "Fix the login issue above and re-run: [bold cyan]ig-agent run[/bold cyan]"
+            )
+            raise typer.Exit(1)
+        if not providers_configured():
+            console.print("[yellow]⚠[/yellow] No AI provider key — can't start the daemon.")
+            raise typer.Exit(1)
+        console.print("\n[bold green]starting orchestrator…[/bold green]\n")
+        from instagram_ai_agent.orchestrator import main as orch_main
+        orch_main()  # blocks — this is the long-running daemon
+        return
+
     console.print("[bold]Next:[/bold]")
+    if logged_in:
+        console.print("  [bold cyan]ig-agent run[/bold cyan]                 start the autonomous daemon — generates + posts forever")
     console.print("  [bold cyan]ig-agent generate -n 3[/bold cyan]    make your first 3 posts (~2 min)")
     console.print("  [bold cyan]ig-agent review[/bold cyan]           walk + approve each")
     console.print("  [bold cyan]ig-agent dashboard[/bold cyan]        browse everything in a web UI")

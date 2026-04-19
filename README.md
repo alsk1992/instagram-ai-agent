@@ -30,16 +30,18 @@ _43-second walkthrough — real `ig-agent doctor`, `status`, `warmup-status` run
 
 ## 🚀 Quickstart
 
-**Three commands. Then walk away — it's fully autonomous.**
+**One command. Then walk away — it's fully autonomous.**
 
 ```bash
 pipx install git+https://github.com/alsk1992/instagram-ai-agent.git
-ig-agent setup           # 4 questions, ~2 min — writes niche.yaml + .env
-ig-agent login           # connect your Instagram account
-ig-agent run             # ← THE daemon. Runs forever. Generates + posts. Walk away.
+ig-agent setup --with-login --run
 ```
 
-`ig-agent run` is the agent. It generates posts on a schedule, posts them live, replies to comments, follows back niche-aligned accounts, handles the 14-day warmup ramp, backs off on rate limits, refreshes sessions. No further commands needed. Leave it in `tmux` / `screen` / `systemd` on a VPS and close the laptop.
+That's the whole thing. `setup` asks you 4 questions (niche + voice + audience + persona), opens your browser to grab a free OpenRouter key, prompts for Instagram username/password once, logs in + verifies the session, then immediately starts the orchestrator daemon. No follow-up commands, no editing `.env`, no copy-paste.
+
+The daemon then generates posts on a schedule, posts them live, replies to comments, follows back niche-aligned accounts, handles the 14-day warmup ramp, backs off on rate limits, refreshes sessions. Leave it in `tmux` / `screen` / `systemd` and close the laptop.
+
+Prefer to do it in stages? Drop the `--run` flag and the orchestrator stays off until you type `ig-agent run` yourself. Drop `--with-login` too and IG auth defers until you type `ig-agent login`.
 
 ### Cautious first week (opt-in)
 
