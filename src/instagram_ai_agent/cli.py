@@ -814,14 +814,21 @@ def _setup_check_deps() -> None:
         console.print(f"  [red]✗[/red] Python {py} — need 3.11+. Upgrade and re-run setup.")
         raise typer.Exit(1)
 
-    # ffmpeg — can't sudo apt silently; print the exact command per OS
+    # ffmpeg — auto-install via winget (Windows) or brew (macOS). Linux
+    # needs sudo which we can't prompt for cleanly, so we print the command.
     if shutil.which("ffmpeg") and shutil.which("ffprobe"):
         console.print("  [green]✓[/green] ffmpeg + ffprobe")
     else:
-        cmd = _ffmpeg_install_cmd()
-        console.print(f"  [red]✗[/red] ffmpeg missing — run: [bold]{cmd}[/bold]")
-        if not Confirm.ask("  Continue setup anyway? (you'll need ffmpeg before `generate`)", default=True):
-            raise typer.Exit(1)
+        if _try_auto_install_ffmpeg():
+            console.print("  [green]✓[/green] ffmpeg installed")
+        else:
+            cmd = _ffmpeg_install_cmd()
+            console.print(f"  [red]✗[/red] ffmpeg missing — run: [bold]{cmd}[/bold]")
+            if not Confirm.ask(
+                "  Continue setup anyway? (you'll need ffmpeg before `generate`)",
+                default=True,
+            ):
+                raise typer.Exit(1)
 
     # Playwright chromium — auto-install when missing (300MB, ~90s)
     if _playwright_chromium_installed():
@@ -849,6 +856,86 @@ def _ffmpeg_install_cmd() -> str:
     if sys.platform == "win32":
         return "winget install Gyan.FFmpeg  (or: choco install ffmpeg)"
     return "install ffmpeg via your package manager"
+
+
+def _try_auto_install_ffmpeg() -> bool:
+    """Attempt silent install of ffmpeg via the OS's package manager.
+
+    Returns True when ffmpeg + ffprobe are both on PATH after the attempt.
+    Does NOT raise — callers fall back to printing the manual install
+    command on failure.
+
+    * Windows: winget install Gyan.FFmpeg (no admin prompt usually)
+    * macOS: brew install ffmpeg (no sudo required)
+    * Linux: requires sudo for apt/dnf/pacman — returns False, user must
+      run the printed command themselves.
+    """
+    # Linux needs sudo, which we can't prompt for silently — fall through.
+    if sys.platform.startswith("linux"):
+        return False
+
+    commands: list[list[str]] = []
+    if sys.platform == "win32":
+        if shutil.which("winget"):
+            commands.append(["winget", "install", "--silent", "--accept-package-agreements",
+                             "--accept-source-agreements", "Gyan.FFmpeg"])
+        elif shutil.which("choco"):
+            commands.append(["choco", "install", "-y", "ffmpeg"])
+    elif sys.platform == "darwin":
+        if shutil.which("brew"):
+            commands.append(["brew", "install", "ffmpeg"])
+
+    if not commands:
+        return False
+
+    for cmd in commands:
+        pretty = " ".join(cmd)
+        console.print(f"  [yellow]⚠[/yellow] ffmpeg missing — auto-installing via [bold]{pretty}[/bold] (~30s)…")
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        except Exception as e:
+            console.print(f"     [dim]{type(e).__name__}: {e}[/dim]")
+            continue
+        if r.returncode != 0:
+            tail = (r.stderr or r.stdout or "")[-300:].strip()
+            console.print(f"     [dim]exit {r.returncode}: {tail}[/dim]")
+            continue
+        # On Windows, winget may have installed to a location that isn't on
+        # PATH until the shell restarts. Probe common install locations so
+        # the current process can still find ffmpeg.
+        if not shutil.which("ffmpeg"):
+            _prepend_windows_ffmpeg_to_path()
+        if shutil.which("ffmpeg") and shutil.which("ffprobe"):
+            return True
+        console.print(
+            "     [dim]installed but not yet on PATH — close + reopen PowerShell, "
+            "then re-run `ig-agent setup`.[/dim]"
+        )
+        return False
+    return False
+
+
+def _prepend_windows_ffmpeg_to_path() -> None:
+    """On Windows, winget installs ffmpeg under
+    %LOCALAPPDATA%\\Microsoft\\WinGet\\Packages\\... and the new PATH entry
+    isn't visible to the current process. Probe known locations and prepend
+    whatever we find to the in-process PATH so subsequent subprocess calls
+    can invoke ffmpeg without a shell restart."""
+    if sys.platform != "win32":
+        return
+    candidates = [
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Packages",
+        Path("C:/Program Files/ffmpeg"),
+        Path("C:/ffmpeg"),
+    ]
+    for root in candidates:
+        if not root.is_dir():
+            continue
+        for ff in root.rglob("ffmpeg.exe"):
+            bin_dir = str(ff.parent)
+            if bin_dir not in os.environ.get("PATH", ""):
+                os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+            return
 
 
 def _playwright_chromium_installed() -> bool:
