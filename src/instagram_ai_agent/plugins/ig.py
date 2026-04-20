@@ -50,7 +50,15 @@ def _build_cookie_seed() -> dict[str, str] | None:
 
     Returns a dict of every cookie provided (may be sparse) or None if
     sessionid is absent.
+
+    **Escape hatch:** ``IG_AUTH_MODE=userpass`` forces the agent to skip
+    the cookie path entirely even when cookies are present. Use when
+    you know cookies aren't working (CSRF errors, web-cookie + mobile-
+    client architecture mismatch) and want the clean u/p + TOTP flow
+    instagrapi is actually designed for.
     """
+    if os.environ.get("IG_AUTH_MODE", "").strip().lower() in ("userpass", "password", "u/p"):
+        return None
     cookies = {
         "sessionid":  os.environ.get("IG_SESSIONID", "").strip(),
         "ds_user_id": os.environ.get("IG_DS_USER_ID", "").strip(),
@@ -193,6 +201,42 @@ def _apply_web_identity(cl: Any) -> None:
         cl.user_agent = DESKTOP_CHROME_UA
     except Exception:
         pass
+
+
+def _refresh_web_headers(cl: Any) -> None:
+    """Re-apply web-mode identity headers after cookies have been loaded
+    via ``cl.set_settings()`` (or ``login_by_sessionid()``).
+
+    Why this is needed: instagrapi's ``set_settings()`` rebuilds the
+    session's header dict from its own template, WIPING the web
+    identity we pinned in ``__init__``. And ``X-CSRFToken`` can only be
+    stamped once cookies are actually loaded — in ``__init__``, the
+    cookie jar is empty so the stamp no-ops.
+
+    This helper re-pins desktop Chrome UA, Sec-CH-UA, Sec-Fetch-*, and
+    — critically — stamps ``X-CSRFToken`` from the now-populated cookie
+    jar. Without X-CSRFToken matching the csrftoken cookie, IG's edge
+    returns "CSRF token missing or incorrect" on every subsequent call.
+    """
+    # Re-pin identity headers (set_settings may have wiped them)
+    _apply_web_identity(cl)
+    # Stamp X-CSRFToken from the live cookie jar — this is the part
+    # that couldn't work during __init__ because cookies were empty.
+    try:
+        csrf = cl.private.cookies.get("csrftoken", "") if hasattr(cl, "private") else ""
+        if csrf:
+            cl.private.headers["X-CSRFToken"] = csrf
+            # Some instagrapi calls also check cl.public
+            if hasattr(cl, "public") and cl.public is not None:
+                cl.public.headers["X-CSRFToken"] = csrf
+            log.debug("web mode: stamped X-CSRFToken from cookie jar (len=%d)", len(csrf))
+        else:
+            log.warning(
+                "web mode: no csrftoken in cookie jar after set_settings — "
+                "IG will reject with 'CSRF token missing'"
+            )
+    except Exception as e:
+        log.debug("web mode: CSRF refresh failed: %s", e)
 
 
 def _enable_web_mode_routing(cl: Any) -> None:
@@ -489,6 +533,8 @@ class IGClient:
             try:
                 self.cl.load_settings(str(self.session_path))
                 settings_loaded = True
+                if getattr(self, "_web_mode", False):
+                    _refresh_web_headers(self.cl)
             except Exception as e:
                 log.warning("Failed to load session, will re-login: %s", e)
 
@@ -511,6 +557,13 @@ class IGClient:
                 try:
                     settings = self._build_settings_from_cookies(self._cookie_seed)
                     self.cl.set_settings(settings)
+                    # Web mode: refresh CSRF + Sec-CH-UA headers AFTER
+                    # set_settings has populated the cookie jar. Doing it in
+                    # __init__ was too early (cookies were still empty), so
+                    # X-CSRFToken was never actually set → IG returned
+                    # "CSRF token missing or incorrect" on the first call.
+                    if getattr(self, "_web_mode", False):
+                        _refresh_web_headers(self.cl)
                     # Probe to confirm the session is live
                     self.cl.get_timeline_feed()
                     self._logged_in = True
@@ -528,6 +581,8 @@ class IGClient:
                     )
             try:
                 self.cl.login_by_sessionid(self._cookie_seed["sessionid"])
+                if getattr(self, "_web_mode", False):
+                    _refresh_web_headers(self.cl)
                 # Probe the session — login_by_sessionid does a user_info_v1
                 # internally but that isn't a write-path validation. Hit
                 # get_timeline_feed like the other paths so stale sessionids
@@ -544,6 +599,8 @@ class IGClient:
 
         try:
             self.cl.login(self.username, self._password)
+            if getattr(self, "_web_mode", False):
+                _refresh_web_headers(self.cl)
             # Probe the session — load_settings alone doesn't validate it.
             self.cl.get_timeline_feed()
             self._logged_in = True
