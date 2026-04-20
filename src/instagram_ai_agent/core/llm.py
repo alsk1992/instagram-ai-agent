@@ -49,94 +49,118 @@ class Endpoint:
 
 
 # OpenRouter-only routing (verified live against /api/v1/models on 2026-04-20).
-# This project uses OpenRouter as the sole provider — no Groq/Gemini/Cerebras
-# accounts to juggle. Redundancy comes from listing multiple :free siblings
-# so failover stays inside OpenRouter when any single model rate-limits.
 #
-# Per-model :free RPM caps (Apr 2026) range from ~8 (hot models like
-# llama-3.3-70b:free) to ~20 globally across the pool. The auto-router
-# `openrouter/free` is primary because it spreads load across all free
-# models in real time, dodging single-model RPM caps. Concrete models
-# follow as named fallbacks for when the router itself is overloaded.
+# Two separate endpoint pools because freeform text and structured JSON have
+# different failure modes:
+#
+#   FREEFORM_CHAIN — used by `generate()` for prose (captions, reel scripts,
+#   vision descriptions). Accepts `openrouter/free` (the auto-router) as the
+#   top of the chain because prose-quality is forgiving and the router spreads
+#   load across the whole :free pool.
+#
+#   JSON_CHAIN — used by `generate_json()` for anything structured. We
+#   DELIBERATELY exclude `openrouter/free` and `minimax/minimax-m2.5:free`
+#   here: empirical evidence from this project's logs shows the router
+#   routes JSON-mode calls to 1-4B models (Gemma-3n-e2b, LFM-2.5) that
+#   either (a) reject `response_format=json_object` with 400
+#   "Developer instruction is not enabled for models/gemma-3n-e2b-it",
+#   (b) return empty completions, or (c) emit chain-of-thought prose
+#   before the JSON and get truncated before reaching it. MiniMax-M2.5
+#   returns empty completions in ~30% of JSON-mode calls. Neither is
+#   fit for schema-following output.
+#
+#   JSON_CHAIN is ordered big-reasoning-first. Nemotron-120B is a
+#   reasoning-tuned MoE and follows JSON schemas reliably; Gemma-4-31B
+#   is a solid mid-tier; Nemotron-Nano and Gemma-4-26B are fallbacks;
+#   Trinity is a final hedge. All are ≥26B params — the smallest model
+#   in this pool is ~13x larger than the ones the router likes to pick.
 _OR = "https://openrouter.ai/api/v1"
 
-CAPTION_CHAIN: list[Endpoint] = [
+FREEFORM_CAPTION_CHAIN: list[Endpoint] = [
     Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
              max_tokens=1024, temperature=0.85),
     Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
              max_tokens=1024, temperature=0.85),
     Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-26b-a4b-it:free",
              max_tokens=1024, temperature=0.85),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "minimax/minimax-m2.5:free",
-             max_tokens=1024, temperature=0.85),
     Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "arcee-ai/trinity-large-preview:free",
              max_tokens=1024, temperature=0.85),
 ]
 
-CRITIC_CHAIN: list[Endpoint] = [
+FREEFORM_SCRIPT_CHAIN: list[Endpoint] = [
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
+             max_tokens=2048, temperature=0.75),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
+             max_tokens=2048, temperature=0.75),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "arcee-ai/trinity-large-preview:free",
+             max_tokens=2048, temperature=0.75),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-26b-a4b-it:free",
+             max_tokens=2048, temperature=0.75),
+]
+
+# Vision: only models that accept image inputs. Verified 2026-04-20 via
+# /api/v1/models — the Gemma-4 :free SKUs and the openrouter/free router
+# advertise image support; Nemotron / MiniMax / Arcee / LFM are text-only.
+FREEFORM_VISION_CHAIN: list[Endpoint] = [
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
+             max_tokens=1024, temperature=0.3),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
+             max_tokens=1024, temperature=0.3),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-26b-a4b-it:free",
+             max_tokens=1024, temperature=0.3),
+]
+
+# JSON-mode endpoints: big schema-following models only. This is the single
+# pool used by generate_json() regardless of the caller's `task` label —
+# the task label still drives max_tokens / temperature defaults, but never
+# endpoint selection. Ordered reasoning-first.
+JSON_CHAIN: list[Endpoint] = [
     Endpoint("openrouter", _OR, "OPENROUTER_API_KEY",
              "nvidia/nemotron-3-super-120b-a12b:free",
-             max_tokens=512, temperature=0.1),
+             max_tokens=2048, temperature=0.2),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY",
+             "google/gemma-4-31b-it:free",
+             max_tokens=2048, temperature=0.2),
     Endpoint("openrouter", _OR, "OPENROUTER_API_KEY",
              "nvidia/nemotron-3-nano-30b-a3b:free",
-             max_tokens=512, temperature=0.1),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
-             max_tokens=512, temperature=0.2),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
-             max_tokens=512, temperature=0.2),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "minimax/minimax-m2.5:free",
-             max_tokens=512, temperature=0.2),
-]
-
-BULK_CHAIN: list[Endpoint] = [
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
-             max_tokens=2048, temperature=0.6),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "minimax/minimax-m2.5:free",
-             max_tokens=2048, temperature=0.6),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
-             max_tokens=2048, temperature=0.6),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-26b-a4b-it:free",
-             max_tokens=2048, temperature=0.6),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "arcee-ai/trinity-large-preview:free",
-             max_tokens=2048, temperature=0.6),
-]
-
-SCRIPT_CHAIN: list[Endpoint] = [
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
-             max_tokens=2048, temperature=0.75),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
-             max_tokens=2048, temperature=0.75),
+             max_tokens=2048, temperature=0.2),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY",
+             "google/gemma-4-26b-a4b-it:free",
+             max_tokens=2048, temperature=0.2),
     Endpoint("openrouter", _OR, "OPENROUTER_API_KEY",
              "arcee-ai/trinity-large-preview:free",
-             max_tokens=2048, temperature=0.75),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "minimax/minimax-m2.5:free",
-             max_tokens=2048, temperature=0.75),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-26b-a4b-it:free",
-             max_tokens=2048, temperature=0.75),
+             max_tokens=2048, temperature=0.2),
 ]
 
-ANALYZE_CHAIN: list[Endpoint] = CRITIC_CHAIN  # same reasoning, same models
-
-# Vision: only models with image input are eligible. Verified 2026-04-20:
-# both Gemma-4 :free SKUs and the openrouter/free router accept image input;
-# the Nemotron / MiniMax / Arcee / LFM :free models are text-only.
-VISION_CHAIN: list[Endpoint] = [
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
-             max_tokens=1024, temperature=0.3),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
-             max_tokens=1024, temperature=0.3),
-    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-26b-a4b-it:free",
-             max_tokens=1024, temperature=0.3),
-]
+# Legacy aliases — kept so any callers that still reference CAPTION_CHAIN
+# et al. keep working. ROUTES is the canonical lookup for `generate()`.
+CAPTION_CHAIN = FREEFORM_CAPTION_CHAIN
+SCRIPT_CHAIN = FREEFORM_SCRIPT_CHAIN
+VISION_CHAIN = FREEFORM_VISION_CHAIN
+CRITIC_CHAIN = JSON_CHAIN
+BULK_CHAIN = JSON_CHAIN
+ANALYZE_CHAIN = JSON_CHAIN
 
 
 ROUTES: dict[Task, list[Endpoint]] = {
-    "caption": CAPTION_CHAIN,
-    "critic": CRITIC_CHAIN,
-    "bulk": BULK_CHAIN,
-    "script": SCRIPT_CHAIN,
-    "analyze": ANALYZE_CHAIN,
-    "vision": VISION_CHAIN,
+    "caption": FREEFORM_CAPTION_CHAIN,
+    "critic":  JSON_CHAIN,
+    "bulk":    JSON_CHAIN,
+    "script":  FREEFORM_SCRIPT_CHAIN,
+    "analyze": JSON_CHAIN,
+    "vision":  FREEFORM_VISION_CHAIN,
+}
+
+
+# Per-task defaults for generate_json (since JSON_CHAIN is shared, each
+# task's endpoint max_tokens/temperature is the same — caller overrides
+# via kwargs if they need different values).
+_JSON_TASK_DEFAULTS: dict[str, tuple[int, float]] = {
+    "caption": (1024, 0.3),   # short structured captions
+    "critic":  (1024, 0.1),   # deterministic scoring
+    "bulk":    (2500, 0.3),   # longer lists (themes, ideas)
+    "script":  (2048, 0.4),
+    "analyze": (2500, 0.1),   # theme clustering, angle brainstorm
 }
 
 
@@ -353,57 +377,115 @@ async def generate_json(
     """
     enriched = (
         (system or "")
-        + "\nRespond with valid JSON only. No prose, no markdown fences."
+        + "\nRespond with valid JSON only. No prose, no markdown fences, "
+        + "no chain-of-thought. Start with { or [."
     ).strip()
-    raw = await generate(
-        task,
-        prompt,
-        system=enriched,
-        max_tokens=max_tokens,
-        temperature=temperature if temperature is not None else 0.2,
-        json_mode=True,
-    )
+    messages: list[dict[str, Any]] = []
+    if enriched:
+        messages.append({"role": "system", "content": enriched})
+    messages.append({"role": "user", "content": prompt})
+
+    # JSON-mode calls always use JSON_CHAIN — schema-following models only.
+    # See the JSON_CHAIN comment in this file for why openrouter/free and
+    # minimax-m2.5 are excluded here (tiny-model CoT / empty completions).
+    # On parse/shape rejection we fall through to the next endpoint in the
+    # chain just like on 429/5xx — bad JSON is an endpoint failure, not a
+    # job failure.
+    default_mt, default_temp = _JSON_TASK_DEFAULTS.get(task, (2048, 0.2))
+    effective_temp = temperature if temperature is not None else default_temp
+    effective_mt = max_tokens or default_mt
+    chain = JSON_CHAIN
+    last_err: Exception | None = None
+    for ep in chain:
+        if _client_for(ep) is None:
+            continue
+        cooling = _is_cooling_down(ep)
+        if cooling > 0:
+            log.debug("llm_json %s skip %s/%s — cooldown %.0fs left",
+                      task, ep.provider, ep.model, cooling)
+            continue
+        try:
+            raw = await _call_one(
+                ep,
+                messages,
+                max_tokens=effective_mt,
+                temperature=effective_temp,
+                json_mode=True,
+            )
+        except RateLimitError as e:
+            _park(ep, _retry_after_seconds(e) or _DEFAULT_COOLDOWN_S)
+            last_err = e
+            continue
+        except APIStatusError as e:
+            code = getattr(e, "status_code", None)
+            if code == 429:
+                _park(ep, _retry_after_seconds(e) or _DEFAULT_COOLDOWN_S)
+            elif code and code >= 500:
+                await asyncio.sleep(0.5 + random.random())
+            log.warning("llm_json %s via %s/%s failed (%s): %s",
+                        task, ep.provider, ep.model, code, e)
+            last_err = e
+            continue
+        except Exception as e:
+            log.warning("llm_json %s via %s/%s failed: %s",
+                        task, ep.provider, ep.model, e)
+            last_err = e
+            continue
+
+        try:
+            parsed = _parse_and_coerce_json(raw, expect)
+            log.debug("llm_json %s via %s/%s ok", task, ep.provider, ep.model)
+            return parsed
+        except ValueError as e:
+            log.warning("llm_json %s via %s/%s: JSON rejected — %s (trying next)",
+                        task, ep.provider, ep.model, str(e)[:180])
+            last_err = e
+            await asyncio.sleep(0.3)
+            continue
+
+    raise AllProvidersFailed(
+        f"All providers failed for JSON task={task}: {last_err!r}"
+    ) from last_err
+
+
+def _parse_and_coerce_json(raw: str, expect: Literal["object", "array", "any"]) -> Any:
+    """Parse raw text into JSON of the expected shape, with two repair passes.
+    Raises ValueError on unrecoverable failure so callers can try another endpoint."""
     cleaned = _strip_json(raw)
+    parsed: Any = None
     try:
         parsed = json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        parsed = None
-        # Repair attempt 1: balanced-braces extract (trims trailing CoT prose)
+    except json.JSONDecodeError:
+        # Repair 1: balanced-braces extract (trims trailing CoT prose)
         repaired = _extract_balanced(cleaned)
         if repaired:
             try:
                 parsed = json.loads(repaired)
             except json.JSONDecodeError:
                 pass
-        # Repair attempt 2: truncation repair (model hit max_tokens mid-value)
+        # Repair 2: truncation repair (model hit max_tokens mid-value)
         if parsed is None:
             repaired = _repair_truncated_json(cleaned)
             if repaired:
                 try:
                     parsed = json.loads(repaired)
-                    log.debug("llm %s: recovered truncated JSON (%d→%d chars)",
-                              task, len(cleaned), len(repaired))
                 except json.JSONDecodeError:
                     pass
         if parsed is None:
-            raise ValueError(f"LLM returned unparseable JSON: {raw[:400]!r}") from e
+            raise ValueError(f"unparseable JSON: {raw[:200]!r}")
 
     # Shape coercion — small :free models routinely ignore json_object and
-    # return a single-element array.
+    # return a single-element array when asked for an object (or wrap an
+    # array inside a one-key object when asked for an array).
     if expect == "object" and isinstance(parsed, list):
         if len(parsed) == 1 and isinstance(parsed[0], dict):
             return parsed[0]
-        raise ValueError(
-            f"LLM returned a list where an object was expected: {raw[:400]!r}"
-        )
+        raise ValueError(f"list where object expected: {raw[:200]!r}")
     if expect == "array" and isinstance(parsed, dict):
-        # Common failure: wrapping the array under a single top-level key.
         for v in parsed.values():
             if isinstance(v, list):
                 return v
-        raise ValueError(
-            f"LLM returned an object where an array was expected: {raw[:400]!r}"
-        )
+        raise ValueError(f"object where array expected: {raw[:200]!r}")
     return parsed
 
 
