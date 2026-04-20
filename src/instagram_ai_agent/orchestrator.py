@@ -703,6 +703,15 @@ async def amain() -> None:
 
 
 def main() -> None:
+    # Windows: force the selector event loop. The default ProactorEventLoop
+    # raises NotImplementedError for the subprocess + socket operations
+    # instagrapi / aiohttp / APScheduler use, and those errors bubble up
+    # from deep inside job callbacks as a useless "Unexpected error:
+    # NotImplementedError" with no actionable trace. Selector policy is
+    # compatible with every library we depend on.
+    import sys as _sys
+    if _sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     try:
         asyncio.run(amain())
     except KeyboardInterrupt:
