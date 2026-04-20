@@ -37,7 +37,7 @@ from instagram_ai_agent.brain import (
     events as events_mod,
 )
 from instagram_ai_agent.content import pipeline as content_pipeline
-from instagram_ai_agent.content.generators import carousel_repurpose
+from instagram_ai_agent.content.generators import carousel_repurpose, quote_card
 from instagram_ai_agent.core import alerts, db
 from instagram_ai_agent.core.config import (
     ROOT,
@@ -622,27 +622,39 @@ class Orchestrator:
 
     async def run_forever(self) -> None:
         self.start()
-        # Kick heartbeat once so `ig-agent status` can see the orchestrator
-        # is alive within seconds — don't make the user wait 30 min.
+
+        # Boot-time job fanout. Each brain job hits the LLM, and free-tier
+        # quotas (OpenRouter ~20 RPM, Gemini 15 RPM) don't like five parallel
+        # kicks. Stagger them over ~60s so the RPM budget survives cold start.
+        def _delayed(coro_fn, delay: float):
+            async def runner():
+                await asyncio.sleep(delay)
+                await coro_fn()
+            asyncio.create_task(runner())
+
+        # Heartbeat is free (no LLM) — run immediately so `ig-agent status`
+        # sees the orchestrator within seconds.
         asyncio.create_task(self.job_heartbeat())
-        # Light "kick" jobs at startup so we don't wait for the first interval
-        asyncio.create_task(self.job_trends())
-        # Kick events at startup so a themed day reaches context immediately
-        if self.cfg.holidays_enabled or self.cfg.events_calendar:
-            asyncio.create_task(self.job_events())
-        # Kick Wikipedia OTD so today's anniversaries are available immediately
+
+        # Brain jobs staggered across the first minute.
+        _delayed(self.job_trends, 3)
+        _delayed(self.job_hackernews, 15)
         if self.cfg.wiki_otd_enabled:
-            asyncio.create_task(self.job_wiki_otd())
-        # Kick HN trend feed on boot so first cycle has trend signal
-        asyncio.create_task(self.job_hackernews())
-        # Kick Reddit harvester so first-boot context isn't dry for 45 min
+            _delayed(self.job_wiki_otd, 30)
+        if self.cfg.holidays_enabled or self.cfg.events_calendar:
+            _delayed(self.job_events, 45)
         if self.cfg.reddit_enabled and self.cfg.reddit_subs:
-            asyncio.create_task(self.job_reddit())
+            _delayed(self.job_reddit, 55)
+
         # First-post readiness kicks — chain generate → schedule → post
         # so a brand-new orchestrator produces + slots + posts within
         # minutes instead of an hour. Silently no-ops when caps/queue
         # don't allow any action. Staggered so they don't collide.
         asyncio.create_task(self._first_post_kick())
+
+        # One-shot smoke-test post (IG_SMOKE_POST=1, gated by stamp file).
+        # Sleeps internally for 3 min then posts — fire-and-forget here.
+        asyncio.create_task(self._smoke_post())
         await self._stop.wait()
 
     async def _first_post_kick(self) -> None:
@@ -666,6 +678,53 @@ class Orchestrator:
             await self.job_post()
         except Exception:
             log.exception("first_post_kick: job_post failed")
+
+    async def _smoke_post(self) -> None:
+        """One-shot pipeline confirmation post. Fires ~3 min after first
+        boot when ``IG_SMOKE_POST=1``. Generates a single quote card,
+        uploads it directly (bypassing the warmup gate so the user can
+        confirm the LLM → image → upload chain works end-to-end on a
+        real account), then drops a state stamp so it never fires again.
+
+        Failures alert via Telegram so the user finds out without tailing
+        the log. Success includes the post URL.
+        """
+        import os as _os
+        if _os.environ.get("IG_SMOKE_POST", "").strip().lower() not in ("1", "true", "yes", "on"):
+            return
+        if db.state_get("smoke_post_done") is not None:
+            log.debug("smoke_post: already completed on a prior boot — skipping")
+            return
+        if _writes_gated():
+            log.info("smoke_post: writes gated (paused / rest gate) — skipping")
+            return
+
+        # 3 min stagger so the user has time to see boot logs settle and
+        # so the brain-job fanout above clears the LLM RPM budget first.
+        await asyncio.sleep(180)
+
+        log.info("smoke_post: starting one-shot pipeline confirmation")
+        try:
+            await alerts.send("smoke-test post starting (one-shot pipeline check)…", level="info")
+            content = await quote_card.generate(self.cfg)
+            if not content.media_paths:
+                raise RuntimeError("quote_card produced no media")
+            caption = (content.visible_text or "").strip() or "✨"
+            media_pk = self.ig.upload_photo(content.media_paths[0], caption)
+            try:
+                code = self.ig.cl.media_pk_to_code(int(media_pk))
+                url = f"https://www.instagram.com/p/{code}/"
+            except Exception:
+                url = f"(pk={media_pk}, check your grid)"
+            db.state_set("smoke_post_done", db.now_iso())
+            log.info("smoke_post: ✓ posted media_pk=%s url=%s", media_pk, url)
+            await alerts.send(
+                f"smoke-test post live → <a href='{url}'>{url}</a>",
+                level="ok",
+            )
+        except Exception as e:
+            log.exception("smoke_post: failed")
+            await alerts.send(f"smoke-test post FAILED: {e}", level="err")
 
     def request_stop(self) -> None:
         self._stop.set()

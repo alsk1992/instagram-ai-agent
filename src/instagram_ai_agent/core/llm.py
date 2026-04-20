@@ -13,7 +13,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import random
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -46,143 +48,85 @@ class Endpoint:
     supports_json_mode: bool = True
 
 
-# Free-tier models verified Apr 2026. The ":free" tag on OpenRouter means
-# the free daily quota; remove it (and supply credits) to use paid.
+# OpenRouter-only routing (verified live against /api/v1/models on 2026-04-20).
+# This project uses OpenRouter as the sole provider — no Groq/Gemini/Cerebras
+# accounts to juggle. Redundancy comes from listing multiple :free siblings
+# so failover stays inside OpenRouter when any single model rate-limits.
+#
+# Per-model :free RPM caps (Apr 2026) range from ~8 (hot models like
+# llama-3.3-70b:free) to ~20 globally across the pool. The auto-router
+# `openrouter/free` is primary because it spreads load across all free
+# models in real time, dodging single-model RPM caps. Concrete models
+# follow as named fallbacks for when the router itself is overloaded.
+_OR = "https://openrouter.ai/api/v1"
+
 CAPTION_CHAIN: list[Endpoint] = [
-    Endpoint(
-        "openrouter",
-        "https://openrouter.ai/api/v1",
-        "OPENROUTER_API_KEY",
-        "meta-llama/llama-3.3-70b-instruct:free",
-        max_tokens=1024,
-        temperature=0.85,
-    ),
-    Endpoint(
-        "groq",
-        "https://api.groq.com/openai/v1",
-        "GROQ_API_KEY",
-        "llama-3.3-70b-versatile",
-        max_tokens=1024,
-        temperature=0.85,
-    ),
-    Endpoint(
-        "gemini",
-        "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "GEMINI_API_KEY",
-        "gemini-2.0-flash",
-        max_tokens=1024,
-        temperature=0.85,
-    ),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
+             max_tokens=1024, temperature=0.85),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
+             max_tokens=1024, temperature=0.85),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-26b-a4b-it:free",
+             max_tokens=1024, temperature=0.85),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "minimax/minimax-m2.5:free",
+             max_tokens=1024, temperature=0.85),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "arcee-ai/trinity-large-preview:free",
+             max_tokens=1024, temperature=0.85),
 ]
 
 CRITIC_CHAIN: list[Endpoint] = [
-    Endpoint(
-        "cerebras",
-        "https://api.cerebras.ai/v1",
-        "CEREBRAS_API_KEY",
-        "llama-3.3-70b",
-        max_tokens=512,
-        temperature=0.2,
-    ),
-    Endpoint(
-        "openrouter",
-        "https://openrouter.ai/api/v1",
-        "OPENROUTER_API_KEY",
-        "deepseek/deepseek-r1:free",
-        max_tokens=512,
-        temperature=0.1,
-    ),
-    Endpoint(
-        "groq",
-        "https://api.groq.com/openai/v1",
-        "GROQ_API_KEY",
-        "llama-3.3-70b-versatile",
-        max_tokens=512,
-        temperature=0.2,
-    ),
-    Endpoint(
-        "gemini",
-        "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "GEMINI_API_KEY",
-        "gemini-2.0-flash",
-        max_tokens=512,
-        temperature=0.2,
-    ),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY",
+             "nvidia/nemotron-3-super-120b-a12b:free",
+             max_tokens=512, temperature=0.1),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY",
+             "nvidia/nemotron-3-nano-30b-a3b:free",
+             max_tokens=512, temperature=0.1),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
+             max_tokens=512, temperature=0.2),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
+             max_tokens=512, temperature=0.2),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "minimax/minimax-m2.5:free",
+             max_tokens=512, temperature=0.2),
 ]
 
 BULK_CHAIN: list[Endpoint] = [
-    Endpoint(
-        "gemini",
-        "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "GEMINI_API_KEY",
-        "gemini-2.0-flash",
-        max_tokens=2048,
-        temperature=0.6,
-    ),
-    Endpoint(
-        "openrouter",
-        "https://openrouter.ai/api/v1",
-        "OPENROUTER_API_KEY",
-        "meta-llama/llama-3.3-70b-instruct:free",
-        max_tokens=2048,
-        temperature=0.6,
-    ),
-    Endpoint(
-        "groq",
-        "https://api.groq.com/openai/v1",
-        "GROQ_API_KEY",
-        "llama-3.3-70b-versatile",
-        max_tokens=2048,
-        temperature=0.6,
-    ),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
+             max_tokens=2048, temperature=0.6),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "minimax/minimax-m2.5:free",
+             max_tokens=2048, temperature=0.6),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
+             max_tokens=2048, temperature=0.6),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-26b-a4b-it:free",
+             max_tokens=2048, temperature=0.6),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "arcee-ai/trinity-large-preview:free",
+             max_tokens=2048, temperature=0.6),
 ]
 
 SCRIPT_CHAIN: list[Endpoint] = [
-    Endpoint(
-        "openrouter",
-        "https://openrouter.ai/api/v1",
-        "OPENROUTER_API_KEY",
-        "openai/gpt-oss-120b:free",
-        max_tokens=2048,
-        temperature=0.75,
-    ),
-    Endpoint(
-        "openrouter",
-        "https://openrouter.ai/api/v1",
-        "OPENROUTER_API_KEY",
-        "qwen/qwen3-coder-480b:free",
-        max_tokens=2048,
-        temperature=0.75,
-    ),
-    Endpoint(
-        "groq",
-        "https://api.groq.com/openai/v1",
-        "GROQ_API_KEY",
-        "llama-3.3-70b-versatile",
-        max_tokens=2048,
-        temperature=0.75,
-    ),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
+             max_tokens=2048, temperature=0.75),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
+             max_tokens=2048, temperature=0.75),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY",
+             "arcee-ai/trinity-large-preview:free",
+             max_tokens=2048, temperature=0.75),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "minimax/minimax-m2.5:free",
+             max_tokens=2048, temperature=0.75),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-26b-a4b-it:free",
+             max_tokens=2048, temperature=0.75),
 ]
 
 ANALYZE_CHAIN: list[Endpoint] = CRITIC_CHAIN  # same reasoning, same models
 
+# Vision: only models with image input are eligible. Verified 2026-04-20:
+# both Gemma-4 :free SKUs and the openrouter/free router accept image input;
+# the Nemotron / MiniMax / Arcee / LFM :free models are text-only.
 VISION_CHAIN: list[Endpoint] = [
-    Endpoint(
-        "gemini",
-        "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "GEMINI_API_KEY",
-        "gemini-2.0-flash",
-        max_tokens=1024,
-        temperature=0.3,
-    ),
-    Endpoint(
-        "openrouter",
-        "https://openrouter.ai/api/v1",
-        "OPENROUTER_API_KEY",
-        "meta-llama/llama-3.2-90b-vision-instruct:free",
-        max_tokens=1024,
-        temperature=0.3,
-    ),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "openrouter/free",
+             max_tokens=1024, temperature=0.3),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-31b-it:free",
+             max_tokens=1024, temperature=0.3),
+    Endpoint("openrouter", _OR, "OPENROUTER_API_KEY", "google/gemma-4-26b-a4b-it:free",
+             max_tokens=1024, temperature=0.3),
 ]
 
 
@@ -198,6 +142,54 @@ ROUTES: dict[Task, list[Endpoint]] = {
 
 # Client cache keyed by (base_url, api_key) — avoids rebuilding SSL contexts
 _clients: dict[tuple[str, str], AsyncOpenAI] = {}
+
+# Rate-limit awareness. Free-tier quotas (2026-Apr):
+#   OpenRouter:   ~20 RPM global over :free pool; specific hot models ~8 RPM
+#   Groq:         30 RPM on llama-3.3-70b-versatile (14.4k/day)
+#   Gemini Flash: 15 RPM (1500/day)
+#   Cerebras:     30 RPM (14.4k/day)
+# When an endpoint returns 429, park it for a cooldown window so the
+# next task in the chain skips straight past instead of re-hitting it.
+# Key: (provider, model). Value: epoch seconds until the endpoint is usable again.
+_cooldown: dict[tuple[str, str], float] = {}
+
+# Defaults when the 429 response has no Retry-After header.
+_DEFAULT_COOLDOWN_S = 60.0
+_MAX_COOLDOWN_S = 600.0
+
+
+def _ep_key(ep: Endpoint) -> tuple[str, str]:
+    return (ep.provider, ep.model)
+
+
+def _is_cooling_down(ep: Endpoint) -> float:
+    """Return seconds remaining in cooldown, or 0.0 if the endpoint is ready."""
+    until = _cooldown.get(_ep_key(ep), 0.0)
+    remaining = until - time.monotonic()
+    return remaining if remaining > 0 else 0.0
+
+
+def _park(ep: Endpoint, seconds: float) -> None:
+    seconds = min(max(seconds, 5.0), _MAX_COOLDOWN_S)
+    _cooldown[_ep_key(ep)] = time.monotonic() + seconds
+    log.info(
+        "llm cooldown: %s/%s parked for %.0fs after rate-limit",
+        ep.provider, ep.model, seconds,
+    )
+
+
+def _retry_after_seconds(err: Exception) -> float | None:
+    """Pull Retry-After (seconds or HTTP-date) from an httpx response, if present."""
+    resp = getattr(err, "response", None)
+    if resp is None:
+        return None
+    ra = resp.headers.get("retry-after") if hasattr(resp, "headers") else None
+    if not ra:
+        return None
+    try:
+        return float(ra)
+    except (TypeError, ValueError):
+        return None
 
 
 def _client_for(ep: Endpoint) -> AsyncOpenAI | None:
@@ -222,11 +214,15 @@ class AllProvidersFailed(RuntimeError):
     failure is chained via ``__cause__``."""
 
 
+# Retry only on transient network/5xx errors. 429 is NOT retried at this
+# layer — per-model RPM caps won't reset in a 2-20s window, so burning
+# attempts here just slows the outer fallback chain. generate() catches
+# RateLimitError and moves to the next endpoint immediately.
 @retry(
     reraise=True,
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1.5, min=2, max=20),
-    retry=retry_if_exception_type((RateLimitError, APIStatusError, httpx.HTTPError)),
+    retry=retry_if_exception_type((httpx.HTTPError,)),
 )
 async def _call_one(
     ep: Endpoint,
@@ -249,18 +245,7 @@ async def _call_one(
     if json_mode and ep.supports_json_mode:
         kwargs["response_format"] = {"type": "json_object"}
 
-    try:
-        r = await client.chat.completions.create(**kwargs)
-    except APIStatusError as e:
-        # 429/5xx — let tenacity retry; 4xx client errors bubble up fast.
-        if e.status_code is not None and 400 <= e.status_code < 500 and e.status_code != 429:
-            raise APIError(
-                message=str(e),
-                request=getattr(e, "request", None),
-                body=getattr(e, "body", None),
-            ) from e
-        raise
-
+    r = await client.chat.completions.create(**kwargs)
     text = (r.choices[0].message.content or "").strip()
     if not text:
         raise APIError("Empty completion", request=None, body=None)
@@ -287,6 +272,13 @@ async def generate(
     for ep in chain:
         if _client_for(ep) is None:
             continue
+        cooling = _is_cooling_down(ep)
+        if cooling > 0:
+            log.debug(
+                "llm %s skip %s/%s — cooldown %.0fs left",
+                task, ep.provider, ep.model, cooling,
+            )
+            continue
         try:
             out = await _call_one(
                 ep,
@@ -297,10 +289,26 @@ async def generate(
             )
             log.debug("llm %s via %s/%s ok (%d chars)", task, ep.provider, ep.model, len(out))
             return out
+        except RateLimitError as e:
+            # 429 — park this endpoint and move to the next in the chain.
+            _park(ep, _retry_after_seconds(e) or _DEFAULT_COOLDOWN_S)
+            last_err = e
+            continue
+        except APIStatusError as e:
+            code = getattr(e, "status_code", None)
+            # 404/400 — dead model or bad request; don't retry, skip to next.
+            # 5xx — transient server issue; brief jitter then next.
+            if code == 429:
+                _park(ep, _retry_after_seconds(e) or _DEFAULT_COOLDOWN_S)
+            elif code and code >= 500:
+                await asyncio.sleep(0.5 + random.random())
+            log.warning("llm %s via %s/%s failed (%s): %s",
+                        task, ep.provider, ep.model, code, e)
+            last_err = e
+            continue
         except Exception as e:
             log.warning("llm %s via %s/%s failed: %s", task, ep.provider, ep.model, e)
             last_err = e
-            # Briefly back off before trying next provider
             await asyncio.sleep(0.5)
             continue
 
@@ -413,9 +421,6 @@ async def describe_image(image_url: str, question: str = "Describe this image.")
 
 
 def providers_configured() -> list[str]:
-    return [p for p, key in [
-        ("openrouter", "OPENROUTER_API_KEY"),
-        ("groq", "GROQ_API_KEY"),
-        ("gemini", "GEMINI_API_KEY"),
-        ("cerebras", "CEREBRAS_API_KEY"),
-    ] if os.environ.get(key)]
+    # OpenRouter-only project. Returned as a list for backward compat with
+    # callers that expect an iterable.
+    return ["openrouter"] if os.environ.get("OPENROUTER_API_KEY") else []

@@ -366,6 +366,17 @@ def init(
     )
 
     console.print(
+        "\n[dim]Smoke-test post: ~3 min after first start, the agent posts ONE quote "
+        "card to confirm the LLM → image → upload chain works on this account. Bypasses "
+        "the warmup gate just for that one post; never fires again.[/dim]"
+    )
+    smoke = questionary.confirm(
+        "Run a one-shot smoke-test post on first start?", default=True
+    ).ask()
+    if smoke:
+        env_updates["IG_SMOKE_POST"] = "1"
+
+    console.print(
         "\n[dim]IG email-code challenges: without these the agent falls back to "
         "manual code entry. Recommended for long-running accounts so the orchestrator "
         "can auto-resolve.[/dim]"
