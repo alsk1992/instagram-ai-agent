@@ -100,6 +100,83 @@ def _default_user_agent(device: dict) -> str:
     )
 
 
+# Desktop Chrome UA used when cookies were harvested from a desktop browser.
+# Keeping the UA family (desktop Chrome on Windows) aligned with the cookie's
+# origin is the single most important signal for Meta's family-match risk check
+# — per 2026 research, cookie-UA family mismatch = checkpoint within 3-40 calls.
+DESKTOP_CHROME_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/138.0.0.0 Safari/537.36"
+)
+
+
+def is_web_origin_cookies(cookie_seed: dict[str, str] | None) -> bool:
+    """True when the pasted cookie jar was extracted from a desktop/web browser.
+
+    Signal: presence of ``wd`` (window dimensions) or ``dpr`` (device pixel
+    ratio). Both are set by the instagram.com web frontend and NEVER by the
+    mobile Instagram Android/iOS app. Catches the common user flow of
+    "Cookie-Editor extension in Chrome on Windows" without being fooled by a
+    mobile-emulation harvest (those reset dimensions to the emulated device).
+    """
+    if not cookie_seed:
+        return False
+    return bool(cookie_seed.get("wd") or cookie_seed.get("dpr"))
+
+
+def _web_mode_headers() -> dict[str, str]:
+    """Sec-CH-UA + Sec-Fetch-* + X-ASBD-ID headers a real Chrome browser
+    emits on instagram.com. Pinning these on the session prevents Meta's
+    edge from flagging 'no client-hints' which is an instant fingerprint."""
+    return {
+        "Sec-CH-UA":          '"Chromium";v="138", "Google Chrome";v="138", "Not/A)Brand";v="24"',
+        "Sec-CH-UA-Mobile":   "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
+        "Sec-Fetch-Dest":     "empty",
+        "Sec-Fetch-Mode":     "cors",
+        "Sec-Fetch-Site":     "same-origin",
+        "X-ASBD-ID":          "198387",
+        "X-IG-App-ID":        "936619743392459",
+        "X-Requested-With":   "XMLHttpRequest",
+        "Accept":             "*/*",
+        "Accept-Language":    "en-US,en;q=0.9",
+        "Referer":            "https://www.instagram.com/",
+        "Origin":             "https://www.instagram.com",
+    }
+
+
+def _apply_web_identity(cl: Any) -> None:
+    """Pin desktop-Chrome UA + Sec-CH-UA + Sec-Fetch headers on both of
+    instagrapi's Session objects. Called after TLS impersonation when the
+    pasted cookies were harvested from a desktop browser.
+
+    Why: Meta's edge (Akamai) cross-checks (a) TLS JA4 fingerprint, (b) UA
+    string family, (c) Sec-CH-UA client hints — if any of those disagree
+    with the cookie's known origin (stamped into the `sessionid` claim),
+    the request is shunted to the challenge flow. Pinning all three at
+    boot time keeps the identity consistent across every subsequent
+    request instagrapi makes.
+    """
+    web_headers = _web_mode_headers()
+    for attr in ("private", "public"):
+        sess = getattr(cl, attr, None)
+        if sess is None or not hasattr(sess, "headers"):
+            continue
+        try:
+            # Replace any mobile-app headers instagrapi may have seeded
+            sess.headers.update(web_headers)
+            sess.headers["User-Agent"] = DESKTOP_CHROME_UA
+        except Exception as _hdr_err:
+            log.debug("web identity: header pin failed for %s: %s", attr, _hdr_err)
+    # Also try to set instagrapi's own user_agent attribute so the methods
+    # that rebuild headers from cl.user_agent pick up the web string.
+    try:
+        cl.user_agent = DESKTOP_CHROME_UA
+    except Exception:
+        pass
+
+
 def _session_refresh_days() -> int:
     """Days after which we force a fresh password login.
 
@@ -125,17 +202,20 @@ def _session_refresh_days() -> int:
 
 
 # ─── TLS impersonation ──────────────────────────────────────────
-def _tls_impersonation_profile() -> str | None:
+def _tls_impersonation_profile(*, web_mode: bool = False) -> str | None:
     """Return the curl_cffi profile to impersonate, or None to stay on
     plain requests.Session.
 
     Profile selection:
       * ``IG_TLS_IMPERSONATE`` env wins if set (e.g. "chrome131_android",
         "safari18_ios", "chrome146").
-      * Default is ``chrome131_android`` — the closest OSS profile to
-        the real Instagram Android app's OkHttp/BoringSSL handshake.
-        Mismatched profile (desktop Chrome TLS + IG mobile UA) is the
-        exact signal Meta flags.
+      * ``web_mode=True`` — cookies were harvested from a desktop browser.
+        Default to ``chrome136`` (desktop OpenSSL, matches Windows Chrome
+        JA4) instead of chrome131_android (mobile BoringSSL/OkHttp), which
+        would tell Meta the session JUST moved from desktop browser to
+        Android in-app — an instant flag.
+      * ``web_mode=False`` — default to ``chrome131_android`` (matches
+        instagrapi's mobile-app identity).
 
     Returns None when ``IG_TLS_IMPERSONATE=off`` or curl_cffi isn't
     importable — the caller then leaves the sessions unpatched.
@@ -147,15 +227,21 @@ def _tls_impersonation_profile() -> str | None:
         import curl_cffi  # noqa: F401
     except Exception:
         return None
-    return val or "chrome131_android"
+    if val:
+        return val
+    return "chrome136" if web_mode else "chrome131_android"
 
 
-def _apply_tls_impersonation(cl: Any) -> bool:
+def _apply_tls_impersonation(cl: Any, *, web_mode: bool = False) -> bool:
     """Swap instagrapi's two requests.Session objects for curl_cffi
     Session instances with a browser-impersonating TLS/HTTP-2 profile.
     Preserves cookies + headers via the standard Session interface.
+
+    ``web_mode=True`` selects a desktop-Chrome TLS profile so the handshake
+    fingerprint matches the web origin of the cookies.
+
     Returns True when the swap succeeded."""
-    profile = _tls_impersonation_profile()
+    profile = _tls_impersonation_profile(web_mode=web_mode)
     if profile is None:
         return False
     try:
@@ -212,11 +298,28 @@ class IGClient:
         if proxy:
             self.cl.set_proxy(proxy)
 
+        # Read the cookie seed early so we can detect web-origin cookies
+        # BEFORE configuring TLS impersonation + session headers.
+        _early_seed = _build_cookie_seed()
+        self._web_mode = is_web_origin_cookies(_early_seed)
+
         # TLS / HTTP-2 browser impersonation — swap instagrapi's plain
         # requests.Session for a curl_cffi Session that speaks Chrome-
         # on-Android's handshake. Zero-cost when curl_cffi isn't
         # installed; see _apply_tls_impersonation for profile details.
-        self._tls_active = _apply_tls_impersonation(self.cl)
+        # When the pasted cookie jar contains `wd`/`dpr` we're in WEB-
+        # ORIGIN mode — switch the TLS profile to desktop Chrome so the
+        # JA4 fingerprint matches the browser that issued the cookies.
+        self._tls_active = _apply_tls_impersonation(self.cl, web_mode=self._web_mode)
+        if self._web_mode:
+            # Pin desktop Chrome UA + Sec-CH-UA/Sec-Fetch headers on both
+            # sessions so every downstream request carries the consistent
+            # identity of the browser that birthed these cookies.
+            _apply_web_identity(self.cl)
+            log.info(
+                "web-origin cookies detected (wd/dpr present) — pinned desktop "
+                "Chrome identity + TLS profile to match"
+            )
 
         # Persistent device fingerprint
         dev.apply_to(self.cl)
@@ -248,7 +351,8 @@ class IGClient:
         # from a browser to skip the first-login challenge entirely.
         # Triggered when all four cookies are provided AND no session
         # file exists yet (so we don't clobber a working session).
-        self._cookie_seed = _build_cookie_seed()
+        # Reuse the seed we read earlier for web-mode detection.
+        self._cookie_seed = _early_seed
 
         # Wire challenge handlers. When stdin is a TTY (user ran
         # `ig-agent login` directly) we enable interactive code entry
@@ -433,14 +537,22 @@ class IGClient:
         )
         device = {k: device_settings[k] for k in device_keys if k in device_settings}
 
+        # Web-mode UA selection: if cookies came from a desktop browser,
+        # pin a desktop Chrome UA instead of the mobile Android default so
+        # Meta's family-match risk check doesn't see "cookies born on web,
+        # now requests from mobile app" (= instant checkpoint).
+        if os.environ.get("IG_USER_AGENT", "").strip():
+            ua = os.environ["IG_USER_AGENT"].strip()
+        elif is_web_origin_cookies(cookies):
+            ua = DESKTOP_CHROME_UA
+        else:
+            ua = _default_user_agent(device)
+
         return {
             "cookies": dict(cookies),
             "last_login": int(time.time()),
             "device_settings": device,
-            "user_agent": (
-                os.environ.get("IG_USER_AGENT", "").strip()
-                or _default_user_agent(device)
-            ),
+            "user_agent": ua,
             "authorization_data": {
                 "ds_user_id": cookies.get("ds_user_id", ""),
                 "sessionid": cookies.get("sessionid", ""),

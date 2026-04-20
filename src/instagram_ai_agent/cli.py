@@ -1193,11 +1193,17 @@ def _parse_cookie_editor_json(raw: str) -> dict[str, str]:
 
 
 def _validate_cookie_jar(env: dict[str, str]) -> tuple[bool, str]:
-    """Live ping instagram.com/api/v1/accounts/current_user/?edit=true with the
-    pasted cookies. 200 = alive. 401/403 = dead cookies, user must re-extract.
+    """Live ping Instagram with the pasted cookies. 200 = alive. 401/403 =
+    dead cookies, user must re-extract.
 
-    Per the 2026 research: this endpoint is a profile READ (not state-change)
-    so validation doesn't burn budget or trigger challenges."""
+    Auto-selects the endpoint + UA based on cookie origin:
+      * Web-origin (``wd``/``dpr`` present) → www.instagram.com/accounts/edit
+        with a desktop Chrome UA. This is the "loud fail" endpoint per 2026
+        research — returns 403 "useragent mismatch" if UA-cookie pair wrong.
+      * Mobile-origin (default) → i.instagram.com/accounts/current_user with
+        instagrapi's canonical mobile Android UA.
+    """
+    web_mode = bool(env.get("IG_WD") or env.get("IG_DPR"))
     try:
         import httpx
         cookies = {
@@ -1208,32 +1214,58 @@ def _validate_cookie_jar(env: dict[str, str]) -> tuple[bool, str]:
             "ig_did":     env.get("IG_DID", ""),
             "rur":        env.get("IG_RUR", ""),
         }
-        headers = {
-            "User-Agent": env.get(
-                "IG_USER_AGENT",
-                # Safe mobile Android default matching instagrapi's build_user_agent
-                "Instagram 381.0.0.48.119 Android (34/14; 420dpi; 1080x2340; "
-                "samsung; SM-S918B; dm3q; qcom; en_GB; 697519287)",
-            ),
-            "X-IG-App-ID": "936619743392459",  # canonical mobile web app id
-        }
+        custom_ua = env.get("IG_USER_AGENT", "").strip()
+        if web_mode:
+            url = "https://www.instagram.com/api/v1/accounts/edit/web_form_data/"
+            headers = {
+                "User-Agent": custom_ua or (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/138.0.0.0 Safari/537.36"
+                ),
+                "X-IG-App-ID":       "936619743392459",
+                "X-ASBD-ID":         "198387",
+                "X-Requested-With":  "XMLHttpRequest",
+                "Sec-CH-UA":         '"Chromium";v="138", "Google Chrome";v="138", "Not/A)Brand";v="24"',
+                "Sec-CH-UA-Mobile":  "?0",
+                "Sec-CH-UA-Platform": '"Windows"',
+                "Sec-Fetch-Dest":    "empty",
+                "Sec-Fetch-Mode":    "cors",
+                "Sec-Fetch-Site":    "same-origin",
+                "Referer":           "https://www.instagram.com/accounts/edit/",
+                "Accept":            "*/*",
+                "Accept-Language":   "en-US,en;q=0.9",
+            }
+        else:
+            url = "https://i.instagram.com/api/v1/accounts/current_user/?edit=true"
+            headers = {
+                "User-Agent": custom_ua or (
+                    "Instagram 381.0.0.48.119 Android (34/14; 420dpi; 1080x2340; "
+                    "samsung; SM-S918B; dm3q; qcom; en_GB; 697519287)"
+                ),
+                "X-IG-App-ID": "936619743392459",
+            }
         r = httpx.get(
-            "https://i.instagram.com/api/v1/accounts/current_user/?edit=true",
-            cookies=cookies,
-            headers=headers,
-            timeout=10.0,
-            follow_redirects=False,
+            url, cookies=cookies, headers=headers,
+            timeout=10.0, follow_redirects=False,
         )
     except Exception as e:
         return False, f"network error: {e}"
     if r.status_code == 200:
         try:
-            username = (r.json() or {}).get("user", {}).get("username") or "?"
+            # Both endpoints return JSON with the username somewhere
+            payload = r.json() or {}
+            username = (
+                payload.get("user", {}).get("username")
+                or payload.get("form_data", {}).get("username")
+                or "?"
+            )
         except Exception:
             username = "?"
-        return True, f"logged in as @{username}"
+        mode = "web" if web_mode else "mobile"
+        return True, f"logged in as @{username} [{mode} mode]"
     if r.status_code in (401, 403):
-        return False, f"cookies rejected (HTTP {r.status_code}) — likely stale or UA mismatch"
+        return False, f"cookies rejected (HTTP {r.status_code}) — likely stale or UA/TLS mismatch"
     return False, f"unexpected HTTP {r.status_code}"
 
 
