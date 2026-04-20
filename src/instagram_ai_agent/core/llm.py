@@ -341,8 +341,16 @@ async def generate_json(
     system: str | None = None,
     max_tokens: int | None = None,
     temperature: float | None = None,
+    expect: Literal["object", "array", "any"] = "object",
 ) -> Any:
-    """Generate and parse JSON. Tolerates providers that don't support strict JSON mode."""
+    """Generate and parse JSON. Tolerates providers that don't support strict JSON mode.
+
+    ``expect`` lets the caller state the shape they need. When set to "object"
+    (default) and the model returns ``[{...}]``, we unwrap the single dict —
+    small models (Gemma-3n, LFM-2.5) frequently wrap a single object in an
+    array even when asked for an object. If we can't coerce, we raise so
+    ``generate()``'s outer loop falls through to the next endpoint.
+    """
     enriched = (
         (system or "")
         + "\nRespond with valid JSON only. No prose, no markdown fences."
@@ -357,18 +365,36 @@ async def generate_json(
     )
     cleaned = _strip_json(raw)
     try:
-        return json.loads(cleaned)
+        parsed = json.loads(cleaned)
     except json.JSONDecodeError as e:
         # One-shot repair pass: try shrinking to balanced braces
         repaired = _extract_balanced(cleaned)
+        parsed = None
         if repaired:
             try:
-                return json.loads(repaired)
+                parsed = json.loads(repaired)
             except json.JSONDecodeError:
-                # Repair attempt didn't help — fall through to the raise below
-                # which surfaces the ORIGINAL raw payload (more debuggable).
                 pass
-        raise ValueError(f"LLM returned unparseable JSON: {raw[:400]!r}") from e
+        if parsed is None:
+            raise ValueError(f"LLM returned unparseable JSON: {raw[:400]!r}") from e
+
+    # Shape coercion — small :free models routinely ignore json_object and
+    # return a single-element array.
+    if expect == "object" and isinstance(parsed, list):
+        if len(parsed) == 1 and isinstance(parsed[0], dict):
+            return parsed[0]
+        raise ValueError(
+            f"LLM returned a list where an object was expected: {raw[:400]!r}"
+        )
+    if expect == "array" and isinstance(parsed, dict):
+        # Common failure: wrapping the array under a single top-level key.
+        for v in parsed.values():
+            if isinstance(v, list):
+                return v
+        raise ValueError(
+            f"LLM returned an object where an array was expected: {raw[:400]!r}"
+        )
+    return parsed
 
 
 def _extract_balanced(s: str) -> str | None:

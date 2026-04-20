@@ -1185,8 +1185,14 @@ class IGClient:
             start = time.monotonic()
             try:
                 out = fn()
+                # Most callers pass a `lambda: self.cl.method(...)`, whose
+                # __name__ is literally "<lambda>" — useless in the action
+                # log. Fall back to a generic bucket name in that case.
+                _name = getattr(fn, "__name__", "ig_call")
+                if not _name or _name == "<lambda>":
+                    _name = "ig_call"
                 db.action_log(
-                    fn.__name__ if hasattr(fn, "__name__") else "call",
+                    _name,
                     None,
                     "ok",
                     int((time.monotonic() - start) * 1000),
