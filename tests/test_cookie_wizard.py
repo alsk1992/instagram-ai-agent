@@ -166,3 +166,83 @@ def test_env_mapping_round_trips_with_plugins_ig():
         assert env_var in source, (
             f"{env_var} is mapped in cli.py but not read anywhere in plugins/ig.py"
         )
+
+
+# ─── single-line capture ───
+def test_capture_single_line_happy_path(monkeypatch):
+    """Providing values for all 3 required cookies (and skipping optional)
+    returns a valid env dict."""
+    import questionary
+    # Feed answers in order matching _COOKIE_PROMPT_ORDER
+    answers = iter([
+        "sessid_value",     # sessionid (required)
+        "123456789",         # ds_user_id (required)
+        "csrftoken_val",     # csrftoken (required)
+        "",                  # mid (skip)
+        "",                  # ig_did (skip)
+        "",                  # datr (skip)
+        "",                  # rur (skip)
+        "",                  # shbid (skip)
+        "",                  # shbts (skip)
+        "",                  # ig_nrcb (skip)
+        "",                  # wd (skip)
+    ])
+
+    def fake_text(prompt, **kw):
+        class _Q:
+            def ask(self_inner):
+                return next(answers)
+        return _Q()
+
+    monkeypatch.setattr(questionary, "text", fake_text)
+
+    env = cli._capture_cookies_single_line()
+    assert env["IG_SESSIONID"] == "sessid_value"
+    assert env["IG_DS_USER_ID"] == "123456789"
+    assert env["IG_CSRFTOKEN"] == "csrftoken_val"
+    assert "IG_MID" not in env  # skipped
+
+
+def test_capture_single_line_strips_quotes(monkeypatch):
+    """Users sometimes copy values with surrounding double quotes from
+    the Cookie-Editor UI — strip them silently."""
+    import questionary
+    answers = iter([
+        '"sessid_quoted"', "123456789", "csrftoken_val",
+        "", "", "", "", "", "", "", "",
+    ])
+
+    def fake_text(prompt, **kw):
+        class _Q:
+            def ask(self_inner):
+                return next(answers)
+        return _Q()
+
+    monkeypatch.setattr(questionary, "text", fake_text)
+    env = cli._capture_cookies_single_line()
+    assert env["IG_SESSIONID"] == "sessid_quoted"
+
+
+def test_capture_single_line_aborts_on_empty_required(monkeypatch):
+    """Empty sessionid twice → return {} (caller treats as abort)."""
+    import questionary
+    # Empty for sessionid twice (prompt + retry), then loop continues
+    answers = iter(["", ""])
+
+    def fake_text(prompt, **kw):
+        class _Q:
+            def ask(self_inner):
+                return next(answers)
+        return _Q()
+
+    monkeypatch.setattr(questionary, "text", fake_text)
+    env = cli._capture_cookies_single_line()
+    assert env == {}
+
+
+def test_cookie_prompt_order_covers_required():
+    """Required cookies must appear first (so partial paste still has
+    the minimum for validation)."""
+    required_names = cli._COOKIE_REQUIRED
+    first_three_names = {entry[0] for entry in cli._COOKIE_PROMPT_ORDER[:3]}
+    assert required_names == first_three_names

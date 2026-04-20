@@ -1418,22 +1418,25 @@ def _validate_totp_secret(secret: str) -> str | None:
 def _setup_capture_cookies() -> tuple[str, dict[str, str]]:
     """Guided cookie-jar capture — the 2026 VPS-safe auth path.
 
+    Primary flow is **one-cookie-at-a-time**: each cookie goes on a single
+    terminal line so PowerShell / cmd don't silently truncate a multiline
+    paste (the Windows issue that drops everything above ~500 chars).
+
+    JSON-blob paste remains available as an advanced path for users on
+    terminals that handle multiline cleanly (Linux, macOS, Windows Terminal).
+
     Returns (username, env_var_dict). Username is needed so the agent can
     name the session file correctly even though /login is never called.
     """
     console.print(
-        "[bold]Cookie-jar capture[/bold] — 2026 best practice for VPS / server deployments."
-    )
-    console.print(
-        "  [dim]Web-based logins from a fresh server IP almost always trigger "
-        "challenges. Pasting a valid cookie jar from a browser where you're "
-        "already logged in skips the login call entirely — zero challenge surface.[/dim]\n"
+        "[bold]Cookie-jar capture[/bold] — paste cookies from your browser so "
+        "the agent uses your existing IG session without calling /login."
     )
     console.print("  [bold]Steps:[/bold]")
     console.print("    1. Install [bold]Cookie-Editor[/bold] → [cyan]https://cookie-editor.com[/cyan]")
     console.print("    2. Log into [cyan]https://instagram.com[/cyan] in that browser")
-    console.print("    3. Click the Cookie-Editor icon → [bold]Export[/bold] dropdown → [bold]JSON[/bold]")
-    console.print("    4. Paste the full export below when prompted")
+    console.print("    3. Click the Cookie-Editor icon so the cookie list is visible")
+    console.print("    4. Copy each cookie's [bold]Value[/bold] when prompted below")
     console.print()
 
     ig_user = questionary.text(
@@ -1442,47 +1445,141 @@ def _setup_capture_cookies() -> tuple[str, dict[str, str]]:
     ).ask() or ""
     ig_user = ig_user.strip().lstrip("@")
 
+    # Offer JSON-blob as advanced path, but default to individual entry
+    # because multiline paste silently truncates on Windows PowerShell.
+    method = questionary.select(
+        "How do you want to enter the cookies?",
+        choices=[
+            questionary.Choice(
+                "Paste each cookie one-by-one (recommended — works on every terminal)",
+                value="single",
+            ),
+            questionary.Choice(
+                "Paste the full Cookie-Editor JSON blob (advanced — may truncate on Windows)",
+                value="blob",
+            ),
+        ],
+    ).ask()
+
+    if method == "blob":
+        env = _capture_cookies_blob()
+    else:
+        env = _capture_cookies_single_line()
+    if not env:
+        return ig_user, {}
+
+    found = [k for k in _COOKIE_NAME_TO_ENV.values() if k in env]
+    console.print(f"  [green]✓[/green] Captured {len(found)} cookies: {', '.join(found)}")
+
+    # Optional UA pin — matters massively for cookie-jar path survival
+    ua = questionary.text(
+        "User agent to pin (leave blank to auto-derive from device.json):",
+        default="",
+    ).ask() or ""
+    if ua.strip():
+        env["IG_USER_AGENT"] = ua.strip()
+
+    ok, msg = _validate_cookie_jar(env)
+    if ok:
+        console.print(f"  [green]✓[/green] Live validation passed — {msg}")
+        env = _aged_account_extras(env)
+        return ig_user, env
+    console.print(f"  [red]✗[/red] Live validation failed — {msg}")
+    if Confirm.ask("  Save the cookies anyway and continue?", default=False):
+        env = _aged_account_extras(env)
+        return ig_user, env
+    return ig_user, {}
+
+
+# Order cookies are prompted in. Required ones first so if the user
+# bails partway we still have the minimum for validation.
+_COOKIE_PROMPT_ORDER: list[tuple[str, str, bool]] = [
+    # (cookie_name, description_for_user, is_required)
+    ("sessionid",  "the main session token",                       True),
+    ("ds_user_id", "your numeric IG user id (e.g. 46297379238)",   True),
+    ("csrftoken",  "32-character anti-CSRF token",                 True),
+    ("mid",        "machine ID (~26 chars)",                       False),
+    ("ig_did",     "device UUID (C2390799-...-...-...-...)",       False),
+    ("datr",       "cross-Meta browser fingerprint",               False),
+    ("rur",        "region-routing token (RVA\\054... etc)",       False),
+    ("shbid",      "shard identifier",                             False),
+    ("shbts",      "shard timestamp",                              False),
+    ("ig_nrcb",    "NRCB flag (usually '1')",                      False),
+    ("wd",         "window dimensions (optional, web-only signal)", False),
+]
+
+
+def _capture_cookies_single_line() -> dict[str, str]:
+    """Prompt for each cookie value on its own terminal line.
+
+    Works reliably on every terminal (including Windows PowerShell which
+    truncates multiline pastes). Required cookies (sessionid, ds_user_id,
+    csrftoken) MUST be provided; others can be skipped with Enter.
+    """
+    console.print(
+        "\n  [dim]Paste each cookie's [bold]Value[/bold] from Cookie-Editor when "
+        "prompted. Press Enter on its own to skip optional cookies. Required "
+        "ones (sessionid / ds_user_id / csrftoken) can't be skipped.[/dim]\n"
+    )
+    env: dict[str, str] = {}
+    for name, desc, required in _COOKIE_PROMPT_ORDER:
+        env_var = _COOKIE_NAME_TO_ENV[name]
+        label = f"{name} — {desc}"
+        if required:
+            label += " [required]"
+        else:
+            label += " [optional — Enter to skip]"
+        val = questionary.text(label).ask() or ""
+        val = val.strip().strip('"').strip("'")
+        if not val:
+            if required:
+                console.print(
+                    f"  [yellow]⚠[/yellow] {name} is required — can't skip. "
+                    "Re-export from Cookie-Editor if you can't find it."
+                )
+                # Retry the required one once
+                val = (questionary.text(label).ask() or "").strip().strip('"').strip("'")
+                if not val:
+                    console.print(f"  [red]✗[/red] Aborting — {name} missing.")
+                    return {}
+            else:
+                continue
+        env[env_var] = val
+    missing = _COOKIE_REQUIRED - {n for n in _COOKIE_PROMPT_ORDER
+                                  if _COOKIE_NAME_TO_ENV[n[0]] in env}
+    # Defensive: _COOKIE_REQUIRED check via env-var membership
+    required_env = {_COOKIE_NAME_TO_ENV[n] for n in _COOKIE_REQUIRED}
+    if not required_env.issubset(env.keys()):
+        console.print(
+            f"  [red]✗[/red] Missing required: "
+            f"{', '.join(sorted(required_env - env.keys()))}"
+        )
+        return {}
+    return env
+
+
+def _capture_cookies_blob() -> dict[str, str]:
+    """Advanced path: paste the full Cookie-Editor JSON export in one go.
+    Works on terminals with reliable multiline paste (macOS, Linux, Windows
+    Terminal app). Truncates on Windows PowerShell — that's why it's
+    advanced-opt-in rather than default."""
     for attempt in range(3):
         blob = questionary.text(
-            "Paste the Cookie-Editor JSON export (then press Enter):",
+            "Paste the Cookie-Editor JSON export (Esc then Enter to submit):",
             multiline=True,
         ).ask() or ""
-
         try:
-            env = _parse_cookie_editor_json(blob)
+            return _parse_cookie_editor_json(blob)
         except ValueError as e:
             console.print(f"  [red]✗[/red] {e}")
             if attempt < 2 and Confirm.ask("  Try pasting again?", default=True):
                 continue
-            return ig_user, {}
-
-        found = [k for k in _COOKIE_NAME_TO_ENV.values() if k in env]
-        console.print(f"  [green]✓[/green] Parsed {len(found)} cookies: {', '.join(found)}")
-
-        # Optional UA pin — matters massively for cookie-jar path survival
-        ua = questionary.text(
-            "User agent to pin (leave blank to auto-derive from device.json):",
-            default="",
-        ).ask() or ""
-        if ua.strip():
-            env["IG_USER_AGENT"] = ua.strip()
-
-        ok, msg = _validate_cookie_jar(env)
-        if ok:
-            console.print(f"  [green]✓[/green] Live validation passed — {msg}")
-            # Aged-account extras — rur sanity, device bundle import,
-            # rest/freeze period defaults. All optional, skip-friendly.
-            env = _aged_account_extras(env)
-            return ig_user, env
-        console.print(f"  [red]✗[/red] Live validation failed — {msg}")
-        if attempt < 2 and Confirm.ask("  Re-export cookies and try again?", default=True):
-            continue
-        if Confirm.ask("  Save the cookies anyway and continue?", default=False):
-            env = _aged_account_extras(env)
-            return ig_user, env
-        return ig_user, {}
-
-    return ig_user, {}
+            console.print(
+                "  [dim]Paste keeps failing? Ctrl+C and rerun — at the cookie method "
+                "question, pick the one-by-one option instead.[/dim]"
+            )
+            return {}
+    return {}
 
 
 def _validate_openrouter_key(key: str) -> tuple[bool, str]:
