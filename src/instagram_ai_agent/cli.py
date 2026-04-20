@@ -1358,7 +1358,61 @@ def _aged_account_extras(env: dict[str, str]) -> dict[str, str]:
         env["IG_FREEZE_PROFILE_UNTIL"] = freeze_until
         console.print(f"  [green]✓[/green] profile freeze active until {freeze_until}")
 
+    # TOTP secret (auto-resolve 2FA on every login — no more 2fa.fb.tools copy-paste)
+    console.print(
+        "\n  [dim]Most aged accounts ship with 2FA enabled. Sellers give you a "
+        "base32 TOTP secret (e.g. [italic]OO7ZXXIBYI6YB4I7IL7ZEU7M4OJ2T723[/italic]) "
+        "that sites like 2fa.fb.tools turn into 6-digit codes. Paste that secret "
+        "here and the agent generates codes itself on every login — no more "
+        "manual copy-paste loop.[/dim]"
+    )
+    totp_raw = questionary.password(
+        "TOTP secret from seller (base32, leave blank if no 2FA):",
+    ).ask() or ""
+    if totp_raw.strip():
+        secret = totp_raw.strip().replace(" ", "").upper()
+        code = _validate_totp_secret(secret)
+        if code is not None:
+            console.print(
+                f"  [green]✓[/green] TOTP valid — current code is [bold]{code}[/bold] "
+                "(cross-check with 2fa.fb.tools or your authenticator app)"
+            )
+            env["IG_TOTP_SECRET"] = secret
+        else:
+            console.print(
+                "  [red]✗[/red] That doesn't look like a valid base32 TOTP secret. "
+                "Expected ~16-32 chars of A-Z + 2-7. Skipping — add manually in .env later."
+            )
+
     return env
+
+
+def _validate_totp_secret(secret: str) -> str | None:
+    """Generate the current 6-digit TOTP code from a base32 secret.
+
+    Returns the code string on success, None when the secret is malformed.
+    The generated code is printed back to the user so they can verify it
+    against 2fa.fb.tools / their authenticator app — proves the secret is
+    correct BEFORE we write it to .env and rely on it during login.
+
+    pyotp accepts padded/empty base32 silently so we pre-validate: must
+    be at least 16 chars (RFC 4226 minimum) and only base32 alphabet.
+    """
+    import re
+    s = (secret or "").strip().replace(" ", "").replace("-", "").upper()
+    if len(s) < 16:
+        return None
+    # RFC 4648 base32 alphabet: A-Z + 2-7 (+ optional '=' padding)
+    if not re.fullmatch(r"[A-Z2-7]+=*", s):
+        return None
+    try:
+        import pyotp
+        code = pyotp.TOTP(s).now()
+    except Exception:
+        return None
+    if not code or not code.isdigit() or len(code) != 6:
+        return None
+    return code
 
 
 def _setup_capture_cookies() -> tuple[str, dict[str, str]]:

@@ -241,3 +241,38 @@ def test_suggest_timestamps_are_iso_utc():
     # Suffix Z for display
     assert a.endswith("Z")
     assert b.endswith("Z")
+
+
+# ─── TOTP secret validation ───
+def test_totp_validates_valid_base32():
+    """A real-shape TOTP secret produces a 6-digit code."""
+    from instagram_ai_agent import cli
+    # Known pyotp-compatible test secret (32 chars base32, no padding)
+    code = cli._validate_totp_secret("JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP")
+    assert code is not None
+    assert code.isdigit()
+    assert len(code) == 6
+
+
+def test_totp_rejects_non_base32():
+    """Invalid characters → None (wizard shows error, skips writing)."""
+    from instagram_ai_agent import cli
+    assert cli._validate_totp_secret("NOT-BASE32-HAS-DASHES!") is None
+    assert cli._validate_totp_secret("") is None
+    assert cli._validate_totp_secret("123") is None  # too short
+
+
+def test_totp_rejects_random_garbage():
+    from instagram_ai_agent import cli
+    # pyotp rejects lowercase base32 sometimes — our wizard uppers first,
+    # so test the raw API rejects garbage
+    assert cli._validate_totp_secret("!@#$%^&*()") is None
+
+
+def test_totp_deterministic_same_window():
+    """Calling _validate_totp_secret twice within 30s produces the same code."""
+    from instagram_ai_agent import cli
+    secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+    a = cli._validate_totp_secret(secret)
+    b = cli._validate_totp_secret(secret)
+    assert a == b  # same 30s window = same code
