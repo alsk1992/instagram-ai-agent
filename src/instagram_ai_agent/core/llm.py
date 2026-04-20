@@ -331,7 +331,14 @@ async def generate(
             last_err = e
             continue
         except Exception as e:
-            log.warning("llm %s via %s/%s failed: %s", task, ep.provider, ep.model, e)
+            # Demote benign fall-through cases ("Empty completion" from
+            # openrouter/free's auto-router) to debug — they're not
+            # actionable, and the chain is working as designed when the
+            # next endpoint fills in. APIError message is "Empty completion"
+            # exactly.
+            msg = str(e)
+            level = log.debug if "Empty completion" in msg else log.warning
+            level("llm %s via %s/%s failed: %s", task, ep.provider, ep.model, e)
             last_err = e
             await asyncio.sleep(0.5)
             continue
@@ -427,8 +434,10 @@ async def generate_json(
             last_err = e
             continue
         except Exception as e:
-            log.warning("llm_json %s via %s/%s failed: %s",
-                        task, ep.provider, ep.model, e)
+            msg = str(e)
+            level = log.debug if "Empty completion" in msg else log.warning
+            level("llm_json %s via %s/%s failed: %s",
+                  task, ep.provider, ep.model, e)
             last_err = e
             continue
 

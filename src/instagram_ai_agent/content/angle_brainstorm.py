@@ -161,8 +161,33 @@ OUTPUT JSON EXACTLY:
 
     winner = data.get("winner")
     if not isinstance(winner, dict):
-        log.warning("angle_brainstorm: no winner field in response")
-        return None
+        # Synthesise the winner from the scored angles list — we have the
+        # totals, so picking the highest is trivial. Some models skip the
+        # explicit "winner" key even when the instruction demands it.
+        angles_list = data.get("angles") or []
+        scorable = [
+            a for a in angles_list
+            if isinstance(a, dict) and a.get("angle") and a.get("hook")
+        ]
+        if not scorable:
+            log.warning("angle_brainstorm: no winner and no usable angles in response")
+            return None
+        def _total(a: dict) -> int:
+            try:
+                return int(a.get("total") or (
+                    int(a.get("specificity", 0) or 0)
+                    + int(a.get("hook_strength", 0) or 0)
+                    + int(a.get("evidence_anchor", 0) or 0)
+                ))
+            except (TypeError, ValueError):
+                return 0
+        best = max(scorable, key=_total)
+        winner = {
+            "angle": best.get("angle", ""),
+            "hook": best.get("hook", ""),
+            "why": f"highest-total angle ({_total(best)}) among {len(scorable)}",
+        }
+        log.info("angle_brainstorm: synthesised winner from angles (model omitted 'winner' key)")
 
     angle = str(winner.get("angle") or "").strip()
     hook = str(winner.get("hook") or "").strip()
