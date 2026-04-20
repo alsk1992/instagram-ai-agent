@@ -683,9 +683,24 @@ async def amain() -> None:
 
     orch = Orchestrator(cfg)
 
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, orch.request_stop)
+    # Graceful shutdown on SIGINT/SIGTERM. Windows asyncio doesn't support
+    # loop.add_signal_handler (NotImplementedError) — on Windows we fall
+    # back to signal.signal() which isn't loop-aware but still fires the
+    # KeyboardInterrupt path inside asyncio.run, giving us clean shutdown.
+    if sys.platform == "win32":
+        def _win_stop(signum, frame):
+            orch.request_stop()
+        signal.signal(signal.SIGINT, _win_stop)
+        # SIGTERM on Windows maps to CTRL_BREAK_EVENT; not always reliably
+        # delivered by PowerShell, but no harm registering a handler.
+        try:
+            signal.signal(signal.SIGTERM, _win_stop)
+        except (ValueError, AttributeError):
+            pass
+    else:
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, orch.request_stop)
 
     # Fail fast on auth / config issues before scheduling jobs.
     try:
