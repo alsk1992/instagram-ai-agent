@@ -956,6 +956,44 @@ class IGClient:
             self.login()
 
     # ───── Liveness / keep-alive ──────────────────────────────────
+    def gentle_ping(self) -> bool:
+        """Non-state-changing ping — hits ``/api/v1/launcher/sync/`` which
+        the mobile Instagram app calls every few hours to refresh config.
+        Unlike ``keep_alive()``'s timeline feed probe, this endpoint does
+        NOT mark posts seen, does NOT burn engagement budget, and does NOT
+        risk a ``LoginRequired`` on a newly-imported session.
+
+        Purpose: during the post-purchase rest period and between real
+        actions, maintain "session alive but idle" so the edge sees
+        regular human-rhythm traffic without burning anything. 2026
+        aged-account operator consensus (lolz + MP Social threads).
+
+        Returns True on 200/success, False on any failure.
+        """
+        try:
+            self._ensure_backoff_ok()
+        except BackoffActive:
+            return False
+        try:
+            # Use the private session directly — instagrapi doesn't expose
+            # launcher/sync via a public method, but its own client calls
+            # it internally. The session has the cookie jar + headers set.
+            base = f"https://{getattr(self.cl, 'domain', 'i.instagram.com')}/api/v1/launcher/sync/"
+            r = self.cl.private.get(base, timeout=10)
+            ok = 200 <= r.status_code < 300
+            db.get_conn().execute(
+                "INSERT INTO session_health (status, note) VALUES (?, ?)",
+                ("ok" if ok else "warn", f"gentle_ping:{r.status_code}"),
+            )
+            return ok
+        except Exception as e:
+            log.debug("gentle_ping failed (non-fatal): %s", e)
+            db.get_conn().execute(
+                "INSERT INTO session_health (status, note) VALUES (?, ?)",
+                ("warn", f"gentle_ping:{type(e).__name__}"),
+            )
+            return False
+
     def keep_alive(self) -> bool:
         """Lightweight probe that keeps server-side session state warm
         + surfaces ``LoginRequired`` early (before a real write fails).

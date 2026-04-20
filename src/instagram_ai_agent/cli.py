@@ -1275,6 +1275,92 @@ def _validate_cookie_jar(env: dict[str, str]) -> tuple[bool, str]:
     return False, f"unexpected HTTP {r.status_code}"
 
 
+def _aged_account_extras(env: dict[str, str]) -> dict[str, str]:
+    """Follow-up prompts when cookies were captured — for aged/bought accounts.
+
+    Adds to env (all optional, skip-friendly):
+      * IG_DEVICE_IMPORT_PATH — path to seller's device.json bundle
+      * IG_REST_UNTIL — 48h default, blocks write actions during rest
+      * IG_FREEZE_PROFILE_UNTIL — 21d default, blocks profile-edit endpoints
+
+    Also decodes the rur cookie from the captured jar and warns loudly
+    when the edge continent mismatches the user's declared country.
+    """
+    from instagram_ai_agent.core import gates
+    from instagram_ai_agent.plugins import rur as rur_mod
+
+    # Aged-account pre-flight on the captured rur cookie
+    rur_raw = env.get("IG_RUR", "")
+    rur_info = rur_mod.parse_rur(rur_raw) if rur_raw else None
+    if rur_info:
+        age_h = rur_info.age_hours
+        if age_h is None:
+            console.print(f"  [dim]rur region: {rur_info.region} (timestamp unparseable)[/dim]")
+        else:
+            age_label = f"{age_h:.1f}h old"
+            if rur_info.is_stale:
+                console.print(
+                    f"  [yellow]⚠[/yellow] rur region {rur_info.region} ({age_label}) — "
+                    "session is nearing rotation (>48h). First API call will likely "
+                    "force a /login which burns the aged-cookie value. Re-extract "
+                    "cookies from the live browser session before proceeding."
+                )
+            else:
+                console.print(
+                    f"  [green]✓[/green] rur region {rur_info.region}, continent {rur_info.continent} "
+                    f"({age_label} — fresh)"
+                )
+
+    # Aged-account setup confirmation — gate the extras on this
+    is_aged = questionary.confirm(
+        "Is this an aged/bought account? (preserves seller session with rest + freeze periods)",
+        default=False,
+    ).ask()
+    if not is_aged:
+        return env
+
+    # Device bundle import
+    console.print(
+        "  [dim]If the seller provided a device.json / settings.json bundle with "
+        "phone_id / device_id / ig_did / advertising_id, import it now to preserve "
+        "the account's device-trust lineage. Fresh UUIDs trigger 'device reset' "
+        "review within 24-72h on aged accounts.[/dim]"
+    )
+    bundle_path = questionary.text(
+        "Path to seller's device bundle (leave blank if you don't have one):",
+        default="",
+    ).ask() or ""
+    if bundle_path.strip():
+        p = Path(bundle_path.strip()).expanduser()
+        if p.exists():
+            env["IG_DEVICE_IMPORT_PATH"] = str(p.resolve())
+            console.print(f"  [green]✓[/green] device bundle queued for import: {p}")
+        else:
+            console.print(f"  [yellow]⚠[/yellow] {p} not found — skipping device import")
+
+    # Rest period (48h default)
+    rest_until = gates.suggest_rest_until(hours=48)
+    if questionary.confirm(
+        f"Enable 48h rest period? (blocks posts/follows/likes until {rest_until[:16]}Z — "
+        "2026 operator consensus for sold sessions)",
+        default=True,
+    ).ask():
+        env["IG_REST_UNTIL"] = rest_until
+        console.print(f"  [green]✓[/green] rest period active until {rest_until}")
+
+    # Profile freeze (21d default)
+    freeze_until = gates.suggest_freeze_until(days=21)
+    if questionary.confirm(
+        f"Enable 21-day profile-metadata freeze? (blocks avatar/bio/password/2FA edits — "
+        "ownership-change flags in IG's risk model)",
+        default=True,
+    ).ask():
+        env["IG_FREEZE_PROFILE_UNTIL"] = freeze_until
+        console.print(f"  [green]✓[/green] profile freeze active until {freeze_until}")
+
+    return env
+
+
 def _setup_capture_cookies() -> tuple[str, dict[str, str]]:
     """Guided cookie-jar capture — the 2026 VPS-safe auth path.
 
@@ -1330,11 +1416,15 @@ def _setup_capture_cookies() -> tuple[str, dict[str, str]]:
         ok, msg = _validate_cookie_jar(env)
         if ok:
             console.print(f"  [green]✓[/green] Live validation passed — {msg}")
+            # Aged-account extras — rur sanity, device bundle import,
+            # rest/freeze period defaults. All optional, skip-friendly.
+            env = _aged_account_extras(env)
             return ig_user, env
         console.print(f"  [red]✗[/red] Live validation failed — {msg}")
         if attempt < 2 and Confirm.ask("  Re-export cookies and try again?", default=True):
             continue
         if Confirm.ask("  Save the cookies anyway and continue?", default=False):
+            env = _aged_account_extras(env)
             return ig_user, env
         return ig_user, {}
 

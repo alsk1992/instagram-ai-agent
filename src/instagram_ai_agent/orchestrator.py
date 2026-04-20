@@ -71,6 +71,15 @@ def _paused() -> bool:
     return (db.state_get("paused") or "").lower() in ("1", "true", "yes")
 
 
+def _writes_gated() -> bool:
+    """True when pause OR post-purchase rest-period gate is active. Both
+    halt every write-path job (post / story / engage / dm / generate)
+    while brain modules + keep-alive pings keep running. Rest gate is
+    only meaningful for aged accounts — empty IG_REST_UNTIL = no-op."""
+    from instagram_ai_agent.core import gates
+    return _paused() or gates.writes_blocked()
+
+
 class Orchestrator:
     def __init__(self, cfg: NicheConfig):
         self.cfg = cfg
@@ -80,8 +89,8 @@ class Orchestrator:
 
     # ─── jobs ───
     async def job_generate(self) -> None:
-        if _paused():
-            log.debug("job_generate skipped — agent paused")
+        if _writes_gated():
+            log.debug("job_generate skipped — paused or rest-gate active")
             return
         try:
             cid = await content_pipeline.generate_one(self.cfg)
@@ -116,7 +125,7 @@ class Orchestrator:
             log.debug("heartbeat failed: %s", e)
 
     async def job_post(self) -> None:
-        if _paused():
+        if _writes_gated():
             return
         try:
             await poster.post_next(self.cfg, ig=self.ig)
@@ -125,7 +134,7 @@ class Orchestrator:
             await alerts.send(f"Post cycle failed: {e}", level="err")
 
     async def job_post_story(self) -> None:
-        if _paused():
+        if _writes_gated():
             return
         try:
             await story_poster.post_next(self.cfg, ig=self.ig)
@@ -134,7 +143,7 @@ class Orchestrator:
             await alerts.send(f"Story post cycle failed: {e}", level="err")
 
     def job_engage(self) -> None:
-        if _paused():
+        if _writes_gated():
             return
         try:
             engager.run_pass(self.cfg, ig=self.ig)
@@ -267,11 +276,29 @@ class Orchestrator:
         """Light session probe — get_timeline_feed every ~45 min during
         awake hours. Keeps the cookie jar synced with server-side
         rotations and surfaces LoginRequired before a real write fails.
-        Per 2026 instagrapi best practices."""
+        Per 2026 instagrapi best practices.
+
+        During rest-period (IG_REST_UNTIL active), skip the timeline probe
+        — it would mark posts seen + burn engagement budget. The gentler
+        launcher/sync ping (job_gentle_ping) covers the rest-period slot."""
+        from instagram_ai_agent.core import gates
+        if gates.writes_blocked():
+            return
         try:
             await asyncio.to_thread(self.ig.keep_alive)
         except Exception as e:
             log.debug("job_keepalive non-fatal: %s", e)
+
+    async def job_gentle_ping(self) -> None:
+        """Non-state-changing keep-alive — hits /api/v1/launcher/sync/
+        every ~4h to signal "session alive but idle" without touching
+        the timeline feed or any engagement endpoint. Runs regardless
+        of pause/rest state (a silent session dies; a quietly-pinging
+        one survives). 2026 aged-account operator consensus."""
+        try:
+            await asyncio.to_thread(self.ig.gentle_ping)
+        except Exception as e:
+            log.debug("job_gentle_ping non-fatal: %s", e)
 
     async def job_repurpose(self) -> None:
         try:
@@ -466,6 +493,16 @@ class Orchestrator:
             self.job_keepalive,
             IntervalTrigger(minutes=45, jitter=600),
             id="keepalive",
+            max_instances=1,
+            coalesce=True,
+        )
+        # Gentle launcher/sync ping every ~4h — non-state-changing, safe
+        # during rest period. Runs regardless of pause/rest since a silent
+        # session is MORE suspicious than one pinging normally.
+        self.scheduler.add_job(
+            self.job_gentle_ping,
+            IntervalTrigger(hours=4, jitter=900),
+            id="gentle_ping",
             max_instances=1,
             coalesce=True,
         )
