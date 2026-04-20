@@ -146,6 +146,21 @@ def _web_mode_headers() -> dict[str, str]:
     }
 
 
+# Mobile-only headers instagrapi adds by default that web servers 400/302 on.
+# Stripped from both private + public sessions in web mode per 2026 research.
+_MOBILE_ONLY_HEADERS = (
+    "X-IG-Device-ID", "X-IG-Android-ID", "X-IG-Family-Device-ID",
+    "X-Bloks-Version-Id", "X-Bloks-Is-Layout-RTL", "X-Bloks-Is-Panorama-Enabled",
+    "X-Pigeon-Session-Id", "X-Pigeon-Rawclienttime",
+    "X-IG-Capabilities", "X-IG-Connection-Type", "X-FB-HTTP-Engine",
+    "IG-INTENDED-USER-ID",
+    "X-IG-Bandwidth-Speed-KBPS", "X-IG-Bandwidth-TotalBytes-B",
+    "X-IG-Bandwidth-TotalTime-MS",
+)
+
+WEB_HOST = "www.instagram.com"
+
+
 def _apply_web_identity(cl: Any) -> None:
     """Pin desktop-Chrome UA + Sec-CH-UA + Sec-Fetch headers on both of
     instagrapi's Session objects. Called after TLS impersonation when the
@@ -164,7 +179,10 @@ def _apply_web_identity(cl: Any) -> None:
         if sess is None or not hasattr(sess, "headers"):
             continue
         try:
-            # Replace any mobile-app headers instagrapi may have seeded
+            # Strip any mobile-app-only headers first
+            for h in _MOBILE_ONLY_HEADERS:
+                sess.headers.pop(h, None)
+            # Then add the web-browser canonical set
             sess.headers.update(web_headers)
             sess.headers["User-Agent"] = DESKTOP_CHROME_UA
         except Exception as _hdr_err:
@@ -173,6 +191,60 @@ def _apply_web_identity(cl: Any) -> None:
     # that rebuild headers from cl.user_agent pick up the web string.
     try:
         cl.user_agent = DESKTOP_CHROME_UA
+    except Exception:
+        pass
+
+
+def _enable_web_mode_routing(cl: Any) -> None:
+    """Switch instagrapi's private API host from i.instagram.com →
+    www.instagram.com so web-origin cookies authorise correctly.
+
+    Why it's needed: web cookies are scoped to .instagram.com but bound to
+    the ``www.`` host by IG's edge routing. Requests to ``i.instagram.com``
+    with those cookies 302-redirect to the login page, causing the
+    "Exceeded 30 redirects" failure we see with vanilla instagrapi.
+
+    What this touches (per 2026 instagrapi/config + mixins/private audit):
+      * ``instagrapi.config.API_DOMAIN`` — the fallback host used when
+        ``self.domain`` isn't set on a call.
+      * ``cl.domain`` — used to build the Host header AND the request URL.
+      * ``cl.private.headers['Host']`` — some instagrapi calls set this
+        explicitly, overwriting Session defaults.
+      * Capped redirects on both sessions so any remaining mismatch fails
+        loudly in <5 hops instead of 30.
+
+    Does NOT attempt write-path rewrites (upload_igphoto, configure_sidecar
+    etc.) — those need a different payload shape per the web API and are
+    out of scope. Writes in web mode fall back to u/p re-login.
+    """
+    # Patch the library-level constant so instagrapi's internal fallbacks
+    # also hit www.instagram.com when cl.domain isn't explicitly set.
+    try:
+        import instagrapi.config as _igcfg
+        _igcfg.API_DOMAIN = WEB_HOST
+    except Exception as _cfg_err:
+        log.debug("web routing: instagrapi.config patch failed: %s", _cfg_err)
+    # Instance attribute — the primary host used by _send_private_request
+    try:
+        cl.domain = WEB_HOST
+    except Exception as _dom_err:
+        log.debug("web routing: cl.domain set failed: %s", _dom_err)
+    # Cap redirects so any remaining routing mismatch fails loudly
+    for attr in ("private", "public"):
+        sess = getattr(cl, attr, None)
+        if sess is None:
+            continue
+        try:
+            sess.max_redirects = 5
+        except Exception:
+            pass
+    # Stamp the X-CSRFToken header from the pasted csrftoken cookie so
+    # instagrapi's per-call header builder doesn't overwrite it with an
+    # old value derived from the mobile-app auth flow.
+    try:
+        csrf = cl.private.cookies.get("csrftoken", "")
+        if csrf:
+            cl.private.headers["X-CSRFToken"] = csrf
     except Exception:
         pass
 
@@ -316,9 +388,14 @@ class IGClient:
             # sessions so every downstream request carries the consistent
             # identity of the browser that birthed these cookies.
             _apply_web_identity(self.cl)
+            # Switch instagrapi's private API host from i.instagram.com to
+            # www.instagram.com so web-scoped cookies authorise against the
+            # right edge. Without this, login_by_sessionid + get_timeline
+            # redirect-loop ("Exceeded 30 redirects") on first API call.
+            _enable_web_mode_routing(self.cl)
             log.info(
                 "web-origin cookies detected (wd/dpr present) — pinned desktop "
-                "Chrome identity + TLS profile to match"
+                "Chrome identity + TLS profile + www.instagram.com routing"
             )
 
         # Persistent device fingerprint

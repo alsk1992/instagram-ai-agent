@@ -202,6 +202,83 @@ def test_validate_mobile_mode_hits_i_instagram_with_mobile_ua(monkeypatch):
     assert "Android" in captured["headers"]["User-Agent"]
 
 
+def test_apply_web_identity_strips_mobile_headers():
+    """Mobile-app headers that break on the web edge must be removed."""
+    class FakeSession:
+        def __init__(self):
+            self.headers = {
+                "X-IG-Device-ID":     "android-deadbeef",
+                "X-Bloks-Version-Id": "abc123",
+                "X-Pigeon-Session-Id": "UFS-xxx",
+                "X-FB-HTTP-Engine":   "Liger",
+                "IG-INTENDED-USER-ID": "12345",
+                "User-Agent":         "Instagram/Android/Old",
+                "Content-Type":       "application/x-www-form-urlencoded",
+            }
+    class FakeClient:
+        def __init__(self):
+            self.private = FakeSession()
+            self.public = FakeSession()
+            self.user_agent = "old"
+    cl = FakeClient()
+    ig_mod._apply_web_identity(cl)
+    # All mobile-only headers removed
+    for h in ig_mod._MOBILE_ONLY_HEADERS:
+        assert h not in cl.private.headers, f"{h} leaked through"
+    # Unrelated headers preserved (Content-Type is standard, keep it)
+    assert "Content-Type" in cl.private.headers
+
+
+def test_enable_web_mode_routing_switches_domain():
+    """Client's API host must switch to www.instagram.com so web cookies
+    authorise against the right edge."""
+    class FakeCookies:
+        def __init__(self, d): self._d = d
+        def get(self, k, default=""): return self._d.get(k, default)
+    class FakeSession:
+        def __init__(self, cookies=None):
+            self.cookies = FakeCookies(cookies or {"csrftoken": "csrf123"})
+            self.headers = {}
+            self.max_redirects = 30
+    class FakeClient:
+        def __init__(self):
+            self.private = FakeSession()
+            self.public = FakeSession()
+            self.domain = "i.instagram.com"
+
+    cl = FakeClient()
+    ig_mod._enable_web_mode_routing(cl)
+
+    assert cl.domain == ig_mod.WEB_HOST == "www.instagram.com"
+    # Redirects capped to fail fast if routing still mismatches somewhere
+    assert cl.private.max_redirects == 5
+    assert cl.public.max_redirects == 5
+    # CSRF stamped from cookie jar
+    assert cl.private.headers["X-CSRFToken"] == "csrf123"
+    # instagrapi.config module-level constant also patched
+    import instagrapi.config as _igcfg
+    assert _igcfg.API_DOMAIN == "www.instagram.com"
+
+
+def test_enable_web_mode_routing_tolerates_missing_csrftoken():
+    """No csrftoken in jar → routing patch shouldn't crash; header just unset."""
+    class FakeCookies:
+        def get(self, k, default=""): return default
+    class FakeSession:
+        def __init__(self):
+            self.cookies = FakeCookies()
+            self.headers = {}
+            self.max_redirects = 30
+    class FakeClient:
+        def __init__(self):
+            self.private = FakeSession()
+            self.public = FakeSession()
+            self.domain = "i.instagram.com"
+    cl = FakeClient()
+    ig_mod._enable_web_mode_routing(cl)  # no AttributeError / KeyError
+    assert cl.domain == "www.instagram.com"
+
+
 def test_validate_custom_ua_overrides_auto_detection(monkeypatch):
     """User-pinned IG_USER_AGENT wins over the auto-selected default."""
     import httpx
