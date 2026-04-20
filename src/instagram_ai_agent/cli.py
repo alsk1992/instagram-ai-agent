@@ -537,6 +537,29 @@ def setup(
             else:
                 ig_user = questionary.text("Instagram username:").ask() or ""
                 ig_pass = questionary.password("Instagram password:").ask() or ""
+                # Optional TOTP — aged accounts often ship with 2FA on and a
+                # seller-provided base32 secret. If the user has one, capture
+                # it here so auto-login doesn't trip on the 2FA prompt.
+                totp_raw = questionary.password(
+                    "TOTP secret (base32, leave blank if no 2FA on the account):"
+                ).ask() or ""
+                if totp_raw.strip():
+                    secret = totp_raw.strip().replace(" ", "").replace("-", "").upper()
+                    code = _validate_totp_secret(secret)
+                    if code is not None:
+                        console.print(
+                            f"  [green]✓[/green] TOTP valid — current code is [bold]{code}[/bold]"
+                        )
+                        cookie_env["IG_TOTP_SECRET"] = secret
+                    else:
+                        console.print(
+                            "  [yellow]⚠[/yellow] That doesn't look like a valid base32 "
+                            "TOTP secret — skipping. Add manually to .env later if needed."
+                        )
+                # Force skip cookie-path on every login regardless of what's in
+                # .env. Research showed web-cookies under instagrapi's mobile
+                # client fails architecturally; u/p + TOTP is the clean path.
+                cookie_env["IG_AUTH_MODE"] = "userpass"
 
     # ─── Final step — save + seed + verify ────────────────────
     step_num += 1
