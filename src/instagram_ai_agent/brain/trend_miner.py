@@ -29,7 +29,7 @@ async def _cluster(cfg: NicheConfig, samples: list[dict]) -> dict:
         "}\n"
         "Exactly 3–5 themes. `angle` is ≤18 words. `post_idea` is a concrete single post suggestion."
     )
-    return await generate_json("analyze", prompt, system=system, max_tokens=1000)
+    return await generate_json("analyze", prompt, system=system, max_tokens=2500)
 
 
 async def run_once(cfg: NicheConfig, scraper: PublicScraper | None = None) -> int:

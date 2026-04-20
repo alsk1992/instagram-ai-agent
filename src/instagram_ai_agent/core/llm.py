@@ -367,14 +367,24 @@ async def generate_json(
     try:
         parsed = json.loads(cleaned)
     except json.JSONDecodeError as e:
-        # One-shot repair pass: try shrinking to balanced braces
-        repaired = _extract_balanced(cleaned)
         parsed = None
+        # Repair attempt 1: balanced-braces extract (trims trailing CoT prose)
+        repaired = _extract_balanced(cleaned)
         if repaired:
             try:
                 parsed = json.loads(repaired)
             except json.JSONDecodeError:
                 pass
+        # Repair attempt 2: truncation repair (model hit max_tokens mid-value)
+        if parsed is None:
+            repaired = _repair_truncated_json(cleaned)
+            if repaired:
+                try:
+                    parsed = json.loads(repaired)
+                    log.debug("llm %s: recovered truncated JSON (%d→%d chars)",
+                              task, len(cleaned), len(repaired))
+                except json.JSONDecodeError:
+                    pass
         if parsed is None:
             raise ValueError(f"LLM returned unparseable JSON: {raw[:400]!r}") from e
 
@@ -395,6 +405,68 @@ async def generate_json(
             f"LLM returned an object where an array was expected: {raw[:400]!r}"
         )
     return parsed
+
+
+def _bracket_stack(src: str) -> tuple[list[str], bool]:
+    """Return (unclosed-brackets-stack, is-currently-inside-string) for src."""
+    stack: list[str] = []
+    in_str = False
+    escape = False
+    for ch in src:
+        if escape:
+            escape = False
+            continue
+        if in_str:
+            if ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append(ch)
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+    return stack, in_str
+
+
+def _repair_truncated_json(s: str) -> str | None:
+    """Recover JSON truncated mid-value by progressively trimming the tail and
+    closing unclosed brackets. Returns the first candidate that parses, or
+    None if nothing under ~500 chars of trim recovers.
+
+    Common failure this handles: model hit ``max_tokens`` partway through an
+    element (a string or object). We trim back to the nearest "clean break"
+    (after the previous complete value) and synthesise matching closers.
+    """
+    closers = {"{": "}", "[": "]"}
+    # Trim progressively — start minimal, escalate up to ~500 chars.
+    for trim in range(0, min(len(s), 500)):
+        candidate = s[: len(s) - trim]
+        # Strip trailing whitespace/commas/colons/partial-key artefacts
+        candidate = candidate.rstrip().rstrip(",").rstrip()
+        stack, in_str = _bracket_stack(candidate)
+        if in_str:
+            # Mid-string — keep trimming until we're outside the string
+            continue
+        if not stack:
+            try:
+                json.loads(candidate)
+                return candidate
+            except json.JSONDecodeError:
+                continue
+        # Close unclosed brackets in reverse order
+        closed = candidate
+        for opener in reversed(stack):
+            closed += closers[opener]
+        try:
+            json.loads(closed)
+            return closed
+        except json.JSONDecodeError:
+            continue
+    return None
 
 
 def _extract_balanced(s: str) -> str | None:
