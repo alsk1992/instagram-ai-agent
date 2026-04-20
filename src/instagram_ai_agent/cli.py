@@ -515,18 +515,24 @@ def setup(
             default=False,
         ).ask()
         if want_ig:
-            # Branch on environment — cookies are the 2026 consensus for VPS /
-            # server deployments; plain u/p only survives on trusted home IPs.
-            # See docs in .env.example Phase 2.
+            # Two Instagram auth paths. Framing is by METHOD (what you paste),
+            # not by INFRASTRUCTURE (where the agent runs) — both methods work
+            # on both laptop and VPS. The wizard recommendation that VPS needs
+            # cookies is documented in the help text but the choice is yours.
             method = questionary.select(
-                "Where will the agent run?",
+                "How do you want to authenticate to Instagram?",
                 choices=[
-                    "laptop / home WiFi — plain u/p is fine",
-                    "VPS / server / new IP — paste browser cookie jar (recommended for 2026)",
+                    questionary.Choice(
+                        "Username + password — simplest, works fine on home WiFi / trusted IP",
+                        value="userpass",
+                    ),
+                    questionary.Choice(
+                        "Browser cookie jar — strongest trust signal, required for VPS / server / new IP",
+                        value="cookies",
+                    ),
                 ],
             ).ask()
-            is_vps = method and "VPS" in method
-            if is_vps:
+            if method == "cookies":
                 ig_user, cookie_env = _setup_capture_cookies()
             else:
                 ig_user = questionary.text("Instagram username:").ask() or ""
