@@ -27,7 +27,14 @@ class ScrapedPost:
 
 
 class PublicScraper:
-    """Thin, reusable Instaloader facade."""
+    """Thin, reusable Instaloader facade.
+
+    Auto-seeds our instagrapi login cookies into Instaloader's session on
+    init so hashtag + profile scraping doesn't hit the 403 login_required
+    that IG returns for unauthenticated requests since late 2024. Falls
+    back to unauthenticated mode when no session file exists (e.g. first
+    run before ``ig-agent login`` has succeeded).
+    """
 
     def __init__(self) -> None:
         self.L = instaloader.Instaloader(
@@ -41,6 +48,47 @@ class PublicScraper:
             quiet=True,
             request_timeout=30,
         )
+        self._authed = self._seed_session_from_instagrapi()
+        if not self._authed:
+            log.debug(
+                "PublicScraper: no instagrapi session file found — "
+                "running unauthenticated (hashtag + profile reads will 403)"
+            )
+
+    def _seed_session_from_instagrapi(self) -> bool:
+        """Inject cookies from our persisted instagrapi session into
+        Instaloader's requests.Session. Returns True when the session
+        was seeded with at least sessionid + ds_user_id.
+        """
+        import os as _os
+        username = _os.environ.get("IG_USERNAME", "").strip()
+        if not username:
+            return False
+        try:
+            from instagram_ai_agent.core.config import DATA_DIR
+            sp = DATA_DIR / "sessions" / f"{username}.json"
+            if not sp.exists():
+                return False
+            data = json.loads(sp.read_text(encoding="utf-8"))
+            cookies = data.get("cookies") or {}
+            # instagrapi's dump_settings stores sessionid etc. in the
+            # top-level "cookies" map — sometimes also under "authorization_data"
+            auth_data = data.get("authorization_data") or {}
+            sessionid = cookies.get("sessionid") or auth_data.get("sessionid")
+            ds_user_id = cookies.get("ds_user_id") or auth_data.get("ds_user_id")
+            if not (sessionid and ds_user_id):
+                return False
+
+            sess = self.L.context._session  # type: ignore[attr-defined]
+            for name, value in cookies.items():
+                if value:
+                    sess.cookies.set(name, str(value), domain=".instagram.com")
+            # Instaloader uses these for its own internal login-state checks
+            self.L.context.username = username  # type: ignore[attr-defined]
+            return True
+        except Exception as e:
+            log.debug("PublicScraper: session seed failed — %s", e)
+            return False
 
     def profile_posts(self, username: str, limit: int = 12) -> list[ScrapedPost]:
         try:
