@@ -772,15 +772,13 @@ async def amain() -> None:
 
 
 def main() -> None:
-    # Windows: force the selector event loop. The default ProactorEventLoop
-    # raises NotImplementedError for the subprocess + socket operations
-    # instagrapi / aiohttp / APScheduler use, and those errors bubble up
-    # from deep inside job callbacks as a useless "Unexpected error:
-    # NotImplementedError" with no actionable trace. Selector policy is
-    # compatible with every library we depend on.
-    import sys as _sys
-    if _sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    # Windows: leave the default ProactorEventLoop in place. We tried
+    # WindowsSelectorEventLoopPolicy to dodge the add_signal_handler
+    # NotImplementedError, but Selector breaks asyncio.create_subprocess_exec
+    # which playwright (HTML→PNG render path used by quote_card / carousel /
+    # story_image) requires. Proactor supports subprocess; the signal-handler
+    # gap is already swallowed via try/except in amain(). Net result: every
+    # generator works, Ctrl-C still shuts down via KeyboardInterrupt.
     try:
         asyncio.run(amain())
     except KeyboardInterrupt:
