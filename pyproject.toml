@@ -34,7 +34,6 @@ classifiers = [
 dependencies = [
     # Instagram
     "instagrapi>=2.1.3",
-    "instaloader>=4.13",
 
     # LLM clients (OpenAI-compat across providers)
     "openai>=1.54",
