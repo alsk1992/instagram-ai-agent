@@ -26,6 +26,7 @@ from instagram_ai_agent.brain import (
     follow_discovery,
     hackernews,
     hashtag_discovery,
+    homepage_feed,
     news_feed,
     rag,
     reddit_harvester,
@@ -260,6 +261,20 @@ class Orchestrator:
                 log.info("follow_discovery: %d candidates added", n)
         except Exception:
             log.exception("job_follow_discovery failed")
+
+    async def job_homepage_feed(self) -> None:
+        """Scroll the home feed and queue likes/comments on posts from
+        accounts we follow. Natural-looking engagement that's distinct from
+        the hashtag scraper — uses instagrapi's get_timeline_feed(). Runs
+        every ~20 min; the engager drains what this queues per daily caps."""
+        if _writes_gated():
+            return
+        try:
+            res = await homepage_feed.run_once(self.cfg, ig=self.ig)
+            if res.get("likes") or res.get("comments"):
+                log.info("homepage_feed: %s", res)
+        except Exception:
+            log.exception("job_homepage_feed failed")
 
     def job_seed_dm(self) -> None:
         try:
@@ -687,6 +702,17 @@ class Orchestrator:
                 self.job_follow_discovery,
                 IntervalTrigger(minutes=30, jitter=300),
                 id="follow_discovery",
+                max_instances=1,
+                coalesce=True,
+            )
+        # Homepage-feed engagement — engage with posts from accounts we
+        # already follow, not just hashtag scrapes. Natural-looking
+        # behaviour that complements the hashtag seeder.
+        if self.cfg.budget.likes > 0:
+            self.scheduler.add_job(
+                self.job_homepage_feed,
+                IntervalTrigger(minutes=20, jitter=180),
+                id="homepage_feed",
                 max_instances=1,
                 coalesce=True,
             )

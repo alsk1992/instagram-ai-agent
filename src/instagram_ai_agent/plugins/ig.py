@@ -895,6 +895,72 @@ class IGClient:
             })
         return out
 
+    def timeline_feed_posts(self, amount: int = 12) -> list[dict]:
+        """Scrape the home feed — posts from people the account follows.
+        Returns a list of {media_pk, user_id, username, caption, media_type}.
+
+        instagrapi's get_timeline_feed() returns either a list of Media
+        objects or a raw dict with ``feed_items`` (depending on version /
+        session state). We handle both shapes, skip ads + sponsored items,
+        and skip our own posts."""
+        self._ensure_logged_in()
+        me_id = str(getattr(self.cl, "user_id", "") or "")
+        try:
+            feed = self._retry(lambda: self.cl.get_timeline_feed(), attempts=1)
+        except Exception as e:
+            log.debug("timeline_feed_posts: fetch failed — %s", e)
+            return []
+
+        raw_items: list[Any] = []
+        if isinstance(feed, list):
+            raw_items = feed
+        elif isinstance(feed, dict):
+            raw_items = feed.get("feed_items") or feed.get("items") or []
+        else:
+            return []
+
+        out: list[dict] = []
+        for item in raw_items:
+            if len(out) >= amount:
+                break
+            # Dict shape: {"media_or_ad": {...}, "end_of_feed_demarcator": {...}, "ad_injection": {...}}
+            if isinstance(item, dict):
+                if "ad_injection" in item or "end_of_feed_demarcator" in item:
+                    continue
+                media = item.get("media_or_ad") or item.get("media") or item
+                if not isinstance(media, dict):
+                    continue
+                if media.get("ad_id") or media.get("is_ad"):
+                    continue
+                pk = str(media.get("pk") or media.get("id") or "").split("_")[0]
+                user = media.get("user") or {}
+                user_id = str(user.get("pk") or "")
+                username = user.get("username") or ""
+                caption_obj = media.get("caption") or {}
+                caption = (caption_obj.get("text") if isinstance(caption_obj, dict) else "") or ""
+                media_type = int(media.get("media_type") or 0)
+            else:
+                # Media object (pydantic model or dataclass-ish)
+                pk = str(getattr(item, "pk", "") or "")
+                user_obj = getattr(item, "user", None)
+                user_id = str(getattr(user_obj, "pk", "") or "")
+                username = getattr(user_obj, "username", "") or ""
+                caption = getattr(item, "caption_text", "") or ""
+                media_type = int(getattr(item, "media_type", 0) or 0)
+
+            if not pk or not user_id:
+                continue
+            if user_id == me_id:
+                continue  # don't engage with our own posts
+            out.append({
+                "media_pk": pk,
+                "user_id": user_id,
+                "username": username,
+                "caption": caption[:1000],
+                "media_type": media_type,
+            })
+        return out
+
     def followers_of(self, user_id: str, amount: int = 30) -> list[dict]:
         """Return up to ``amount`` followers of another user — used for
         competitor-follower mining. Same quality filters as media_likers."""
