@@ -66,6 +66,11 @@ dependencies = [
     "pyotp>=2.9",
     "imap-tools>=1.7",
 
+    # Public video harvester (zero-signin reel sourcing: YouTube Shorts,
+    # TikTok, Reddit). No API keys. Transformative-commentary pipeline
+    # lives in content/generators/reel_transform.py.
+    "yt-dlp>=2025.1",
+
     # Alerts
     "aiohttp>=3.10",
 

@@ -346,6 +346,76 @@ class Orchestrator:
         except Exception:
             log.exception("job_repurpose failed")
 
+    async def job_transform_reel(self) -> None:
+        """Anonymous public-source reel pipeline. Harvests a public video
+        (Reddit top / YouTube Shorts via yt-dlp — no API keys), runs the
+        anti-fingerprint transform (metadata strip + random crop + voiceover
+        swap + captions), and enqueues the result for the poster.
+
+        Opt-in via IG_TRANSFORM_REELS=1 env flag (off by default because
+        it depends on yt-dlp being installed, and the output sits in a
+        grey-but-legal zone we don't want to surprise users with).
+        Daily cap of 3 enforced via a state counter so IG's
+        reposted-content classifier can't pattern-match on volume.
+        """
+        import os as _os
+        if _os.environ.get("IG_TRANSFORM_REELS", "").strip().lower() not in ("1", "true", "yes", "on"):
+            return
+        if _writes_gated():
+            log.debug("job_transform_reel skipped — paused or rest-gate active")
+            return
+
+        from datetime import datetime as _dt
+        today = _dt.now(UTC).strftime("%Y-%m-%d")
+        counter_key = f"transform_reels_count_{today}"
+        count = int(db.state_get(counter_key) or "0")
+        daily_cap = 3
+        if count >= daily_cap:
+            log.debug("job_transform_reel at daily cap %d/%d", count, daily_cap)
+            return
+
+        try:
+            from instagram_ai_agent.content.captions import generate_caption
+            from instagram_ai_agent.content.generators import reel_transform
+
+            content = await reel_transform.generate(self.cfg)
+            if not content.media_paths:
+                log.warning("job_transform_reel: generator produced no media")
+                return
+
+            # Caption via the normal captioner — matches the voice used by
+            # regular posts so our transforms don't stand out as automated.
+            try:
+                caption = await generate_caption(
+                    self.cfg,
+                    content.format,
+                    context=content.caption_context or content.visible_text or "",
+                )
+            except Exception as e:
+                log.warning("job_transform_reel: caption gen failed — %s", e)
+                caption = content.visible_text or "🎥"
+
+            status = "pending_review" if self.cfg.safety.require_review else "approved"
+            cid = db.content_enqueue(
+                format=content.format,
+                caption=caption,
+                hashtags=self.cfg.hashtags.core[: self.cfg.hashtags.per_post],
+                media_paths=content.media_paths,
+                phash=None,
+                critic_score=None,
+                critic_notes=None,
+                generator=content.generator,
+                status=status,
+                meta=content.meta,
+            )
+            db.state_set(counter_key, str(count + 1))
+            log.info("job_transform_reel: enqueued id=%s status=%s (%d/%d today)",
+                     cid, status, count + 1, daily_cap)
+            if status == "approved":
+                poster.schedule_approved_items(self.cfg)
+        except Exception:
+            log.exception("job_transform_reel failed")
+
     def job_story_viewer(self) -> None:
         try:
             story_viewer.run_pass(self.cfg, ig=self.ig)
@@ -557,6 +627,16 @@ class Orchestrator:
                 max_instances=1,
                 coalesce=True,
             )
+        # Public-source reel transform. Opt-in via IG_TRANSFORM_REELS=1.
+        # The job itself gates on that env var + the per-day counter, so
+        # we can always-register it and let the runtime flag decide.
+        self.scheduler.add_job(
+            self.job_transform_reel,
+            IntervalTrigger(hours=4, jitter=900),
+            id="transform_reel",
+            max_instances=1,
+            coalesce=True,
+        )
         # Story-view pass — view stories of users who just engaged with us
         if self.cfg.budget.story_views > 0:
             self.scheduler.add_job(
