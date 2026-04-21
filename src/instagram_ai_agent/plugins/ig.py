@@ -864,6 +864,65 @@ class IGClient:
         self._ensure_logged_in()
         return bool(self._retry(lambda: self.cl.user_unfollow(user_id)))
 
+    def media_likers(self, media_pk: str, amount: int = 30) -> list[dict]:
+        """Return up to ``amount`` users who liked a given media. Filtered
+        for follow-discovery use: only public accounts, no verified mega-
+        creators (they won't follow back), skips users without usernames."""
+        self._ensure_logged_in()
+        try:
+            users = self._retry(lambda: self.cl.media_likers(media_pk))
+        except Exception as e:
+            log.debug("media_likers %s failed: %s", media_pk, e)
+            return []
+        out: list[dict] = []
+        for u in users[: max(amount, 1)]:
+            username = getattr(u, "username", "") or ""
+            if not username:
+                continue
+            if bool(getattr(u, "is_private", False)):
+                continue
+            # Skip accounts with >500k followers — they won't follow back
+            # and following them won't move our needle.
+            follower_count = int(getattr(u, "follower_count", 0) or 0)
+            if follower_count > 500_000:
+                continue
+            out.append({
+                "user_id": str(getattr(u, "pk", "") or ""),
+                "username": username,
+                "full_name": getattr(u, "full_name", "") or "",
+                "is_verified": bool(getattr(u, "is_verified", False)),
+                "follower_count": follower_count,
+            })
+        return out
+
+    def followers_of(self, user_id: str, amount: int = 30) -> list[dict]:
+        """Return up to ``amount`` followers of another user — used for
+        competitor-follower mining. Same quality filters as media_likers."""
+        self._ensure_logged_in()
+        try:
+            followers = self._retry(lambda: self.cl.user_followers(user_id, amount=amount))
+        except Exception as e:
+            log.debug("followers_of %s failed: %s", user_id, e)
+            return []
+        out: list[dict] = []
+        for uid, u in followers.items():
+            username = getattr(u, "username", "") or ""
+            if not username:
+                continue
+            if bool(getattr(u, "is_private", False)):
+                continue
+            follower_count = int(getattr(u, "follower_count", 0) or 0)
+            if follower_count > 500_000:
+                continue
+            out.append({
+                "user_id": str(uid),
+                "username": username,
+                "full_name": getattr(u, "full_name", "") or "",
+                "is_verified": bool(getattr(u, "is_verified", False)),
+                "follower_count": follower_count,
+            })
+        return out
+
     def comment(self, media_pk: str, text: str) -> str:
         self._ensure_backoff_ok()
         # Note: no post-cooldown gate here — the first-comment-hashtag

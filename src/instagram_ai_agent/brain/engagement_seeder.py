@@ -225,6 +225,31 @@ async def seed_comments_on_hashtags(cfg: NicheConfig, per_tag: int = 1) -> int:
     return queued
 
 
+def seed_follow_targets(cfg: NicheConfig, limit: int = 8) -> int:
+    """Read from ``follow_candidates`` and queue follow actions on the
+    top-scoring unqueued candidates. Follows are per-day-budget gated
+    downstream by the engager; this just offers up to ``limit`` options
+    per seeder run. Typical cap: 25 follows/day, seeded across ~4 runs."""
+    candidates = db.follow_candidates_next(limit=limit)
+    if not candidates:
+        return 0
+    seeded = 0
+    for c in candidates:
+        db.engagement_enqueue(
+            "follow",
+            target_user=c["user_id"],
+            payload={
+                "username": c["username"],
+                "source": c["source"],
+            },
+        )
+        db.follow_candidate_mark_queued(c["user_id"])
+        seeded += 1
+    if seeded:
+        log.info("seeder/follows: %d follow targets queued", seeded)
+    return seeded
+
+
 async def run_once(cfg: NicheConfig) -> dict[str, int]:
     """One full seeder pass. Safe to call repeatedly."""
     results = {
@@ -232,5 +257,6 @@ async def run_once(cfg: NicheConfig) -> dict[str, int]:
         "competitors": seed_from_competitors(cfg),
         "hashtags": seed_from_hashtags(cfg),
         "hashtag_comments": await seed_comments_on_hashtags(cfg),
+        "follows": seed_follow_targets(cfg),
     }
     return results

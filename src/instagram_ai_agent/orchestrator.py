@@ -23,6 +23,7 @@ from instagram_ai_agent.brain import (
     devto,
     dm_seeder,
     engagement_seeder,
+    follow_discovery,
     hackernews,
     hashtag_discovery,
     news_feed,
@@ -246,6 +247,19 @@ class Orchestrator:
                 log.info("seeded %d engagement actions: %s", seeded, results)
         except Exception:
             log.exception("job_seed_engagement failed")
+
+    async def job_follow_discovery(self) -> None:
+        """Populate follow_candidates by scraping hashtag-post likers and
+        competitor followers. Seeder reads from that table next cycle and
+        queues follow actions which the engager drains per daily budget.
+        Runs on an interval independent of the seeder so candidates stay
+        fresh without hammering IG's discovery endpoints."""
+        try:
+            n = await follow_discovery.run_once(self.cfg, ig=self.ig)
+            if n:
+                log.info("follow_discovery: %d candidates added", n)
+        except Exception:
+            log.exception("job_follow_discovery failed")
 
     def job_seed_dm(self) -> None:
         try:
@@ -663,6 +677,19 @@ class Orchestrator:
             max_instances=1,
             coalesce=True,
         )
+        # Follow-target discovery: every ~30 min, scrapes hashtag-post
+        # likers + competitor followers into follow_candidates. The seeder
+        # then drains that table into the engagement queue; the engager
+        # executes follows per the 25/day budget. Only runs when the follow
+        # budget is non-zero (user disabled follows → skip).
+        if self.cfg.budget.follows > 0:
+            self.scheduler.add_job(
+                self.job_follow_discovery,
+                IntervalTrigger(minutes=30, jitter=300),
+                id="follow_discovery",
+                max_instances=1,
+                coalesce=True,
+            )
         # DM pipeline: only schedule if DM budget > 0 (otherwise it's disabled)
         if self.cfg.budget.dms > 0:
             self.scheduler.add_job(

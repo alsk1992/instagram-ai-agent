@@ -287,6 +287,22 @@ SCHEMA = [
     "CREATE INDEX IF NOT EXISTS idx_kc_source ON knowledge_chunks(source)",
     "CREATE INDEX IF NOT EXISTS idx_kc_hash ON knowledge_chunks(source_hash)",
     "CREATE INDEX IF NOT EXISTS idx_kc_model ON knowledge_chunks(embedding_model)",
+    # Follow-discovery candidates: accounts we've identified as worth
+    # following (hashtag-post likers, competitor followers). The seeder
+    # reads from here to populate the engagement_queue's follow actions.
+    # Dedup on user_id so repeated discovery runs upsert.
+    """
+    CREATE TABLE IF NOT EXISTS follow_candidates (
+        user_id     TEXT PRIMARY KEY,
+        username    TEXT NOT NULL,
+        source      TEXT NOT NULL,           -- hashtag:X | likers:media_pk | competitor:handle
+        score       INTEGER DEFAULT 0,       -- follower_count or engagement proxy
+        discovered_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        queued      INTEGER DEFAULT 0,       -- 1 once we've pushed into engagement_queue
+        queued_at   TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_fc_queued ON follow_candidates(queued, discovered_at DESC)",
 ]
 
 _local = threading.local()
@@ -550,6 +566,47 @@ def post_update_metrics(
         WHERE ig_media_pk=?
         """,
         (likes, comments, reach, ig_media_pk),
+    )
+
+
+# ───── Follow candidates ─────
+def follow_candidate_upsert(
+    user_id: str, username: str, source: str, score: int = 0,
+) -> None:
+    """Insert a follow candidate, or refresh the source/score if it already
+    exists and we haven't queued it yet. `queued`=1 rows are left alone so
+    we don't spam-requeue the same user."""
+    get_conn().execute(
+        """
+        INSERT INTO follow_candidates (user_id, username, source, score)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            source = CASE WHEN follow_candidates.queued=0 THEN excluded.source ELSE follow_candidates.source END,
+            score  = CASE WHEN follow_candidates.queued=0 THEN excluded.score  ELSE follow_candidates.score END
+        """,
+        (user_id, username, source, score),
+    )
+
+
+def follow_candidates_next(limit: int = 10) -> list[dict[str, Any]]:
+    """Return the next N unqueued candidates, best-scoring first."""
+    rows = get_conn().execute(
+        """
+        SELECT user_id, username, source, score
+        FROM follow_candidates
+        WHERE queued = 0
+        ORDER BY score DESC, discovered_at ASC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def follow_candidate_mark_queued(user_id: str) -> None:
+    get_conn().execute(
+        "UPDATE follow_candidates SET queued=1, queued_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE user_id=?",
+        (user_id,),
     )
 
 
