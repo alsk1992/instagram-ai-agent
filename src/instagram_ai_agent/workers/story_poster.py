@@ -97,6 +97,21 @@ async def post_next(cfg: NicheConfig, ig: IGClient | None = None) -> int | None:
     db.post_record(pk, cid, item["format"], item["caption"])
     db.action_log("story_post", pk, "ok", 0)
 
+    # Story → Highlight promotion. Match the story's caption + item meta
+    # tags against cfg.highlights.categories keywords; if a category matches,
+    # add this story to the corresponding highlight so it persists past 24h
+    # in the profile's highlight shelf.
+    if cfg.highlights.enabled:
+        try:
+            from instagram_ai_agent.plugins import highlights as _hl
+            meta = item.get("meta") or {}
+            tags = meta.get("tags") or meta.get("highlight_tags") or []
+            category = _hl.category_for_story(cfg, caption=item["caption"], tags=tags)
+            if category is not None:
+                _hl.promote_story_to_category(cl, category, pk)
+        except Exception as e:
+            log.warning("story→highlight promotion failed (non-fatal): %s", e)
+
     if storage.configured():
         try:
             storage.archive_posted_media(cid, item["media_paths"])

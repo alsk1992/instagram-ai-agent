@@ -84,6 +84,19 @@ def build_system(cfg: NicheConfig, format_name: str, *, contrarian: bool = False
     # Empty block on fresh accounts (<2 posts of history) → fallback to persona.
     examples = voice_fingerprint.pick_voice_examples(n=5)
     base += voice_fingerprint.build_voice_block(examples)
+
+    # Persona lore — running character memory across posts. Injects up to
+    # 8 facts the page has already claimed/committed/shared; generator
+    # sees them and writes consistently. Empty on fresh accounts — no-op.
+    from instagram_ai_agent.content import persona_lore
+    base += persona_lore.build_lore_block(max_facts=8)
+
+    # Concept bank — structural patterns currently working in the niche,
+    # mined from hashtag_top high-engagement posts. Empty until the miner
+    # has run at least once — no-op on fresh accounts.
+    from instagram_ai_agent.brain import concept_miner
+    base += concept_miner.build_concept_block(max_concepts=5)
+
     return base
 
 

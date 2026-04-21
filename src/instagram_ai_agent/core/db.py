@@ -303,6 +303,46 @@ SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_fc_queued ON follow_candidates(queued, discovered_at DESC)",
+
+    # Persona lore — running character facts extracted from each shipped
+    # post. Injected into every subsequent generation's system prompt so
+    # posts reference previous claims ("I'm 8 weeks into my rehab journey"
+    # in post 20 knows about "I started rehab this week" from post 3).
+    # category: claim|commitment|preference|milestone|incident
+    """
+    CREATE TABLE IF NOT EXISTS persona_lore (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        category     TEXT NOT NULL,
+        fact         TEXT NOT NULL,
+        post_id      INTEGER,              -- source post (content_queue.id)
+        weight       REAL DEFAULT 1.0,     -- 0-1; decays with age if not referenced
+        created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        last_used_at TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_lore_category ON persona_lore(category, weight DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_lore_recent ON persona_lore(created_at DESC)",
+
+    # Concept bank — distilled {hook, structure, payoff} patterns from
+    # viral-performing posts we've scraped. Fed back into generation as
+    # inspiration: rather than the LLM inventing a hook from scratch, it
+    # sees what's currently working in the niche and adapts. Not a
+    # copy-paste — the LLM is told to use these as structural references,
+    # not verbatim templates.
+    """
+    CREATE TABLE IF NOT EXISTS concept_bank (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        hook         TEXT NOT NULL,
+        structure    TEXT NOT NULL,
+        payoff       TEXT NOT NULL,
+        source       TEXT NOT NULL,         -- hashtag:X | reddit:Y | hn | etc.
+        source_score INTEGER DEFAULT 0,     -- engagement/velocity proxy
+        created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        last_used_at TEXT,
+        use_count    INTEGER DEFAULT 0
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_concept_score ON concept_bank(source_score DESC, created_at DESC)",
 ]
 
 _local = threading.local()
@@ -566,6 +606,86 @@ def post_update_metrics(
         WHERE ig_media_pk=?
         """,
         (likes, comments, reach, ig_media_pk),
+    )
+
+
+# ───── Concept bank ─────
+def concept_append(
+    hook: str, structure: str, payoff: str, source: str, source_score: int = 0,
+) -> int:
+    cur = get_conn().execute(
+        """
+        INSERT INTO concept_bank (hook, structure, payoff, source, source_score)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (hook.strip()[:300], structure.strip()[:500], payoff.strip()[:500],
+         source[:200], source_score),
+    )
+    return int(cur.lastrowid)
+
+
+def concept_top(limit: int = 6, max_age_days: int = 14) -> list[dict[str, Any]]:
+    """Return the top N concept-bank entries, highest-score first, that
+    are fresh enough to still be relevant (decay after N days)."""
+    rows = get_conn().execute(
+        f"""
+        SELECT id, hook, structure, payoff, source, source_score
+        FROM concept_bank
+        WHERE created_at >= datetime('now', '-{int(max_age_days)} days')
+        ORDER BY source_score DESC, created_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def concept_touch(ids: list[int]) -> None:
+    if not ids:
+        return
+    qs = ",".join("?" * len(ids))
+    get_conn().execute(
+        f"UPDATE concept_bank SET last_used_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'), "
+        f"use_count=use_count+1 WHERE id IN ({qs})",
+        ids,
+    )
+
+
+# ───── Persona lore ─────
+def lore_append(category: str, fact: str, post_id: int | None = None, weight: float = 1.0) -> int:
+    """Add a fact to the running persona lore. Fact is a short first-person
+    statement ("trained for 8 weeks to unlock muscle-ups")."""
+    cur = get_conn().execute(
+        "INSERT INTO persona_lore (category, fact, post_id, weight) VALUES (?, ?, ?, ?)",
+        (category, fact.strip()[:500], post_id, max(0.0, min(1.0, weight))),
+    )
+    return int(cur.lastrowid)
+
+
+def lore_top(limit: int = 8) -> list[dict[str, Any]]:
+    """Return the top N lore facts for injection into the system prompt.
+    Balances recency + weight: highest-weight first, tie-break by recency."""
+    rows = get_conn().execute(
+        """
+        SELECT id, category, fact, created_at, weight
+        FROM persona_lore
+        ORDER BY weight DESC, created_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def lore_touch(ids: list[int]) -> None:
+    """Mark lore entries as recently-used (bumps last_used_at). Called by
+    the generator after injecting them, so unused facts decay faster."""
+    if not ids:
+        return
+    qs = ",".join("?" * len(ids))
+    get_conn().execute(
+        f"UPDATE persona_lore SET last_used_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id IN ({qs})",
+        ids,
     )
 
 

@@ -371,8 +371,23 @@ async def _dispatch(
         from instagram_ai_agent.content.generators import reel_stock as reel_mod
         return await reel_mod.generate(cfg, trend_context, contrarian=contrarian)
     if format_name == "reel_ai":
+        # Env switch: IG_AI_VIDEO_BACKEND=hf → route to the HuggingFace
+        # Spaces T2V pool (true video gen via LTX-2/Wan2.2/SVD).
+        # Anything else (or unset) uses the legacy Pollinations+Ken-Burns path.
+        import os as _os
+        backend = _os.environ.get("IG_AI_VIDEO_BACKEND", "").strip().lower()
+        if backend == "hf":
+            try:
+                from instagram_ai_agent.content.generators import reel_hf as reel_hf_mod
+                return await reel_hf_mod.generate(cfg, trend_context)
+            except Exception as e:
+                log.warning("reel_hf failed, falling back to reel_ai (Pollinations): %s", e)
         from instagram_ai_agent.content.generators import reel_ai as reel_ai_mod
         return await reel_ai_mod.generate(cfg, trend_context)
+    if format_name == "reel_hf":
+        # Explicit HF format (if user adds it to format_weights directly).
+        from instagram_ai_agent.content.generators import reel_hf as reel_hf_mod
+        return await reel_hf_mod.generate(cfg, trend_context)
     if format_name == "human_photo":
         from instagram_ai_agent.content.generators import human_photo as human_mod
         return await human_mod.generate(cfg, trend_context)

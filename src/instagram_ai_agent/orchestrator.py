@@ -20,6 +20,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from instagram_ai_agent.brain import (
     competitor_intel,
+    concept_miner,
     devto,
     dm_seeder,
     engagement_seeder,
@@ -248,6 +249,18 @@ class Orchestrator:
                 log.info("seeded %d engagement actions: %s", seeded, results)
         except Exception:
             log.exception("job_seed_engagement failed")
+
+    async def job_concept_mine(self) -> None:
+        """Mine structural patterns from recent high-engagement niche posts
+        into concept_bank. Every caption generation pulls from this bank
+        as inspiration, so content converges on what actually converts in
+        the niche rather than LLM-invented generics."""
+        try:
+            n = await concept_miner.run_once(self.cfg)
+            if n:
+                log.info("concept_miner: +%d patterns", n)
+        except Exception:
+            log.exception("job_concept_mine failed")
 
     async def job_follow_discovery(self) -> None:
         """Populate follow_candidates by scraping hashtag-post likers and
@@ -740,6 +753,16 @@ class Orchestrator:
                 max_instances=1,
                 coalesce=True,
             )
+        # Concept mining: every ~2h, distils structural patterns from
+        # scraped hashtag_top into concept_bank. Captions pull from this
+        # bank so content converges on niche-working patterns.
+        self.scheduler.add_job(
+            self.job_concept_mine,
+            IntervalTrigger(hours=2, jitter=600),
+            id="concept_mine",
+            max_instances=1,
+            coalesce=True,
+        )
         # Homepage-feed engagement — engage with posts from accounts we
         # already follow, not just hashtag scrapes. Natural-looking
         # behaviour that complements the hashtag seeder.

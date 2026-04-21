@@ -177,6 +177,17 @@ async def post_next(
     db.post_record(media_pk, cid, item["format"], item["caption"])
     db.action_log("post", media_pk, "ok", 0)
 
+    # Extract any new persona facts from this caption into the running
+    # lore, so future posts reference what we've already said. Fire-and-
+    # forget — lore extraction is best-effort and never blocks a post.
+    try:
+        from instagram_ai_agent.content import persona_lore
+        await persona_lore.extract_from_post(
+            cfg, caption=item["caption"], post_id=cid,
+        )
+    except Exception as e:
+        log.debug("persona_lore extract failed (non-fatal): %s", e)
+
     # Persist the session AFTER the write — IG rotates cookies
     # (mid / rur / x-ig-www-claim / occasionally csrftoken) on write
     # responses. Losing them on crash = silent session drift.

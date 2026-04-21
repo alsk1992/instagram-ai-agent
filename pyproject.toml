@@ -77,6 +77,12 @@ dependencies = [
     # slide1_hook, trend_miner). Dict-based callers keep the legacy path.
     "instructor>=1.5",
 
+    # HuggingFace Spaces client — lets us hit free community-hosted video
+    # models (LTX-2, Wan2.2, SVD) programmatically. Zero API key in the
+    # unauthenticated mode; optional HF_TOKEN env bumps to ZeroGPU tier.
+    # Used by plugins/hf_video.py → content/generators/reel_hf.py.
+    "gradio-client>=1.0",
+
     # Alerts
     "aiohttp>=3.10",
 
@@ -194,7 +200,7 @@ include = ["instagram_ai_agent*"]
 # Non-Python assets shipped in the wheel so `pip install` works
 # out-of-the-box (not just `pip install -e .` from source).
 "instagram_ai_agent.content.templates.memes"     = ["*.json", "*.jpg", "*.png"]
-"instagram_ai_agent.content.templates.quote_cards" = ["*.html"]
+"instagram_ai_agent.content.templates.quote_cards" = ["*.html", "*.json"]
 "instagram_ai_agent.content.templates.carousels" = ["*.html"]
 "instagram_ai_agent.content.templates.story"     = ["*.html", "*.json"]
 "instagram_ai_agent.dashboard_templates"         = ["*.html", "*.css", "*.js"]

@@ -1,0 +1,126 @@
+{
+  "_meta": {
+    "description": "Curated real-attribution quote library for quote_card posts. Public-domain and widely-circulated quotes only — no invented attributions. Used by quote_card._llm_quote as the primary source; LLM-invented quotes are a last-resort fallback only.",
+    "license": "Public domain (pre-1924) + Creative Commons / fair-use excerpts. Curator: instagram-ai-agent project, 2026.",
+    "version": 1
+  },
+  "tags": {
+    "discipline":      ["No man is free who is not master of himself.", "Attribution: Epictetus"],
+    "effort":          ["Motivation gets you going, discipline keeps you going.", "Attribution: Jim Rohn"]
+  },
+  "quotes": [
+    {"quote": "No man is free who is not master of himself.", "byline": "Epictetus", "tags": ["discipline", "self_mastery"]},
+    {"quote": "Waste no more time arguing what a good man should be. Be one.", "byline": "Marcus Aurelius", "tags": ["action", "character"]},
+    {"quote": "You have power over your mind — not outside events. Realize this, and you will find strength.", "byline": "Marcus Aurelius", "tags": ["mindset", "resilience"]},
+    {"quote": "We suffer more often in imagination than in reality.", "byline": "Seneca", "tags": ["mindset", "fear"]},
+    {"quote": "Difficulties strengthen the mind, as labor does the body.", "byline": "Seneca", "tags": ["effort", "growth"]},
+    {"quote": "Luck is what happens when preparation meets opportunity.", "byline": "Seneca", "tags": ["effort", "preparation"]},
+    {"quote": "It is not the man who has too little, but the man who craves more, that is poor.", "byline": "Seneca", "tags": ["perspective", "contentment"]},
+    {"quote": "He who is brave is free.", "byline": "Seneca", "tags": ["courage", "freedom"]},
+    {"quote": "The impediment to action advances action. What stands in the way becomes the way.", "byline": "Marcus Aurelius", "tags": ["obstacles", "mindset"]},
+    {"quote": "Circumstances do not make the man; they merely reveal him to himself.", "byline": "Epictetus", "tags": ["character", "truth"]},
+    {"quote": "First say to yourself what you would be; and then do what you have to do.", "byline": "Epictetus", "tags": ["commitment", "action"]},
+    {"quote": "It's not what happens to you, but how you react to it that matters.", "byline": "Epictetus", "tags": ["mindset", "response"]},
+
+    {"quote": "It always seems impossible until it's done.", "byline": "Nelson Mandela", "tags": ["persistence", "possibility"]},
+    {"quote": "I have not failed. I've just found 10,000 ways that won't work.", "byline": "Thomas Edison", "tags": ["persistence", "failure"]},
+    {"quote": "The only way to do great work is to love what you do.", "byline": "Steve Jobs", "tags": ["passion", "work"]},
+    {"quote": "Whether you think you can or you think you can't, you're right.", "byline": "Henry Ford", "tags": ["mindset", "belief"]},
+    {"quote": "Success is walking from failure to failure with no loss of enthusiasm.", "byline": "Winston Churchill", "tags": ["persistence", "failure"]},
+    {"quote": "The best time to plant a tree was 20 years ago. The second best time is now.", "byline": "Chinese proverb", "tags": ["action", "timing"]},
+    {"quote": "What we do in life echoes in eternity.", "byline": "Marcus Aurelius", "tags": ["legacy", "action"]},
+    {"quote": "A person who never made a mistake never tried anything new.", "byline": "Albert Einstein", "tags": ["failure", "growth"]},
+
+    {"quote": "The body achieves what the mind believes.", "byline": "unknown (widely attributed)", "tags": ["mindset", "fitness"]},
+    {"quote": "Strength does not come from winning. Your struggles develop your strengths.", "byline": "Arnold Schwarzenegger", "tags": ["fitness", "struggle"]},
+    {"quote": "The only bad workout is the one that didn't happen.", "byline": "unknown (widely circulated)", "tags": ["fitness", "consistency"]},
+    {"quote": "A year from now you'll wish you had started today.", "byline": "Karen Lamb", "tags": ["action", "timing"]},
+    {"quote": "Discipline is choosing between what you want now and what you want most.", "byline": "Augusta F. Kantra", "tags": ["discipline", "choice"]},
+    {"quote": "Pain is temporary. Quitting lasts forever.", "byline": "Lance Armstrong", "tags": ["persistence", "pain"]},
+    {"quote": "The difference between try and triumph is a little umph.", "byline": "Marvin Phillips", "tags": ["effort", "persistence"]},
+    {"quote": "Strong people don't put others down. They lift them up.", "byline": "Michael P. Watson", "tags": ["character", "strength"]},
+    {"quote": "Don't limit your challenges. Challenge your limits.", "byline": "Jerry Dunn", "tags": ["growth", "limits"]},
+    {"quote": "You don't have to be extreme, just consistent.", "byline": "unknown (widely circulated)", "tags": ["consistency", "fitness"]},
+    {"quote": "Discipline equals freedom.", "byline": "Jocko Willink", "tags": ["discipline", "freedom"]},
+    {"quote": "The hardest lifts are the ones you never put in.", "byline": "unknown", "tags": ["effort", "fitness"]},
+    {"quote": "Do something today that your future self will thank you for.", "byline": "Sean Patrick Flanery", "tags": ["action", "future"]},
+
+    {"quote": "Motivation gets you going, discipline keeps you going.", "byline": "Jim Rohn", "tags": ["discipline", "motivation"]},
+    {"quote": "Success is the sum of small efforts repeated day in and day out.", "byline": "Robert Collier", "tags": ["consistency", "effort"]},
+    {"quote": "We are what we repeatedly do. Excellence, then, is not an act, but a habit.", "byline": "Will Durant (paraphrasing Aristotle)", "tags": ["habits", "excellence"]},
+    {"quote": "First forget inspiration. Habit is more dependable.", "byline": "Octavia Butler", "tags": ["habits", "consistency"]},
+    {"quote": "Change your habits, change your life.", "byline": "unknown (widely circulated)", "tags": ["habits", "change"]},
+    {"quote": "Small habits make a big difference.", "byline": "James Clear", "tags": ["habits", "consistency"]},
+    {"quote": "You do not rise to the level of your goals. You fall to the level of your systems.", "byline": "James Clear", "tags": ["systems", "goals"]},
+    {"quote": "Every action you take is a vote for the person you wish to become.", "byline": "James Clear", "tags": ["identity", "action"]},
+
+    {"quote": "Suffer the pain of discipline or suffer the pain of regret.", "byline": "Jim Rohn", "tags": ["discipline", "regret"]},
+    {"quote": "Don't wish it were easier. Wish you were better.", "byline": "Jim Rohn", "tags": ["growth", "effort"]},
+    {"quote": "Your life does not get better by chance. It gets better by change.", "byline": "Jim Rohn", "tags": ["change", "responsibility"]},
+    {"quote": "Work harder on yourself than you do on your job.", "byline": "Jim Rohn", "tags": ["self_improvement", "priority"]},
+
+    {"quote": "In the midst of chaos, there is also opportunity.", "byline": "Sun Tzu", "tags": ["opportunity", "adversity"]},
+    {"quote": "He who knows others is wise. He who knows himself is enlightened.", "byline": "Lao Tzu", "tags": ["wisdom", "self"]},
+    {"quote": "The journey of a thousand miles begins with a single step.", "byline": "Lao Tzu", "tags": ["beginnings", "action"]},
+    {"quote": "A man is great not because he hasn't failed; a man is great because failure hasn't stopped him.", "byline": "Confucius", "tags": ["failure", "persistence"]},
+    {"quote": "It does not matter how slowly you go as long as you do not stop.", "byline": "Confucius", "tags": ["persistence", "pace"]},
+
+    {"quote": "What you think, you become.", "byline": "Mahatma Gandhi", "tags": ["mindset", "identity"]},
+    {"quote": "The future depends on what you do today.", "byline": "Mahatma Gandhi", "tags": ["action", "future"]},
+    {"quote": "Be the change you wish to see in the world.", "byline": "Mahatma Gandhi (paraphrased)", "tags": ["action", "change"]},
+
+    {"quote": "The man who moves a mountain begins by carrying away small stones.", "byline": "Confucius", "tags": ["persistence", "scale"]},
+    {"quote": "Our greatest glory is not in never falling, but in rising every time we fall.", "byline": "Confucius", "tags": ["resilience", "failure"]},
+
+    {"quote": "Don't count the days. Make the days count.", "byline": "Muhammad Ali", "tags": ["time", "action"]},
+    {"quote": "I hated every minute of training, but I said, 'Don't quit. Suffer now and live the rest of your life as a champion.'", "byline": "Muhammad Ali", "tags": ["training", "persistence"]},
+    {"quote": "Champions aren't made in gyms. Champions are made from something they have deep inside them — a desire, a dream, a vision.", "byline": "Muhammad Ali", "tags": ["mindset", "greatness"]},
+    {"quote": "Float like a butterfly, sting like a bee.", "byline": "Muhammad Ali", "tags": ["precision", "craft"]},
+
+    {"quote": "The secret of getting ahead is getting started.", "byline": "Mark Twain", "tags": ["action", "beginnings"]},
+    {"quote": "The two most important days in your life are the day you are born and the day you find out why.", "byline": "Mark Twain", "tags": ["purpose", "meaning"]},
+
+    {"quote": "The expert in anything was once a beginner.", "byline": "Helen Hayes", "tags": ["expertise", "beginnings"]},
+    {"quote": "A ship in harbor is safe, but that is not what ships are built for.", "byline": "John A. Shedd", "tags": ["risk", "purpose"]},
+    {"quote": "Comparison is the thief of joy.", "byline": "Theodore Roosevelt", "tags": ["mindset", "comparison"]},
+    {"quote": "Nothing in the world is worth having or worth doing unless it means effort, pain, difficulty.", "byline": "Theodore Roosevelt", "tags": ["effort", "value"]},
+    {"quote": "Believe you can and you're halfway there.", "byline": "Theodore Roosevelt", "tags": ["belief", "mindset"]},
+
+    {"quote": "When you want to succeed as bad as you want to breathe, then you'll be successful.", "byline": "Eric Thomas", "tags": ["desire", "commitment"]},
+    {"quote": "Don't stop when you're tired. Stop when you're done.", "byline": "David Goggins", "tags": ["persistence", "effort"]},
+    {"quote": "The only way out is through.", "byline": "Robert Frost", "tags": ["persistence", "resolve"]},
+    {"quote": "Do something every day that scares you.", "byline": "Eleanor Roosevelt", "tags": ["courage", "growth"]},
+    {"quote": "No one can make you feel inferior without your consent.", "byline": "Eleanor Roosevelt", "tags": ["mindset", "agency"]},
+
+    {"quote": "Good habits are worth being fanatical about.", "byline": "John Irving", "tags": ["habits", "discipline"]},
+    {"quote": "If you are going through hell, keep going.", "byline": "Winston Churchill", "tags": ["persistence", "adversity"]},
+    {"quote": "Courage is what it takes to stand up and speak. Courage is also what it takes to sit down and listen.", "byline": "Winston Churchill", "tags": ["courage", "humility"]},
+    {"quote": "Success is not final, failure is not fatal: It is the courage to continue that counts.", "byline": "Winston Churchill (widely attributed)", "tags": ["persistence", "courage"]},
+
+    {"quote": "The harder I work, the luckier I get.", "byline": "Samuel Goldwyn", "tags": ["effort", "luck"]},
+    {"quote": "Whether you think you will or think you won't, either way you are right.", "byline": "Henry Ford (variant)", "tags": ["mindset", "belief"]},
+    {"quote": "Opportunity is missed by most people because it is dressed in overalls and looks like work.", "byline": "Thomas Edison", "tags": ["opportunity", "work"]},
+    {"quote": "Hell, there are no rules here — we're trying to accomplish something.", "byline": "Thomas Edison", "tags": ["action", "pragmatism"]},
+
+    {"quote": "Be yourself; everyone else is already taken.", "byline": "Oscar Wilde", "tags": ["authenticity", "identity"]},
+    {"quote": "The man who does not read has no advantage over the man who cannot read.", "byline": "Mark Twain", "tags": ["learning", "growth"]},
+    {"quote": "Either write something worth reading or do something worth writing.", "byline": "Benjamin Franklin", "tags": ["action", "legacy"]},
+    {"quote": "Lost time is never found again.", "byline": "Benjamin Franklin", "tags": ["time", "urgency"]},
+    {"quote": "An investment in knowledge pays the best interest.", "byline": "Benjamin Franklin", "tags": ["learning", "investment"]},
+    {"quote": "Well done is better than well said.", "byline": "Benjamin Franklin", "tags": ["action", "execution"]},
+    {"quote": "By failing to prepare, you are preparing to fail.", "byline": "Benjamin Franklin", "tags": ["preparation", "failure"]},
+
+    {"quote": "A journey of a thousand miles must begin with a single step.", "byline": "Lao Tzu", "tags": ["beginnings", "persistence"]},
+    {"quote": "When I let go of what I am, I become what I might be.", "byline": "Lao Tzu", "tags": ["growth", "identity"]},
+
+    {"quote": "Amateurs sit and wait for inspiration. The rest of us just get up and go to work.", "byline": "Stephen King", "tags": ["work", "professionalism"]},
+    {"quote": "Most of the things worth doing in the world had been declared impossible before they were done.", "byline": "Louis D. Brandeis", "tags": ["possibility", "action"]},
+    {"quote": "Rivers know this: there is no hurry. We shall get there some day.", "byline": "A. A. Milne", "tags": ["patience", "persistence"]},
+
+    {"quote": "A hero is someone who has given his or her life to something bigger than oneself.", "byline": "Joseph Campbell", "tags": ["purpose", "meaning"]},
+    {"quote": "Follow your bliss and the universe will open doors where there were only walls.", "byline": "Joseph Campbell", "tags": ["purpose", "flow"]},
+
+    {"quote": "People do not decide to become extraordinary. They decide to accomplish extraordinary things.", "byline": "Edmund Hillary", "tags": ["action", "greatness"]},
+    {"quote": "What you do every day matters more than what you do once in a while.", "byline": "Gretchen Rubin", "tags": ["consistency", "habits"]}
+  ]
+}
