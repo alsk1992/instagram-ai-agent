@@ -26,6 +26,12 @@ Specificity rules (hard):
 - BAN these phrases: pro tips, game-changer, next level, level up, unlock, secret, hack, hacks, master this, you won't believe, mind-blowing, the ultimate, the best way, crush it, grind, hustle.
 - If a sentence could run on 50 other niche accounts, rewrite it to one that couldn't.
 - Prefer lived-experience framing ("I did X for N weeks, result was Y") over prescription ("you should X").
+
+OUTPUT FORMAT — CRITICAL:
+- Your response is pasted DIRECTLY into the Instagram caption field, as-is.
+- DO NOT explain what you are about to write. DO NOT say "We need to...", "Let me think...", "The caption is:", "Output:", "Here is the caption:", or any similar preamble.
+- DO NOT wrap the caption in quotes. DO NOT add a label. DO NOT emit a JSON object.
+- Emit ONLY the final caption text. Your first character must be the first character of the caption.
 """
 
 

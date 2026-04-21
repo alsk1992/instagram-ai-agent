@@ -212,7 +212,10 @@ async def generate_one(
         # phash dedup misses (different image, same caption template).
         if cfg.human_mimic.caption_entropy_check:
             from instagram_ai_agent.plugins import human_mimic as _hm
-            recent_captions = [r["caption"] for r in recent if r.get("caption")]
+            # `recent` is already a list of caption strings (see line above
+            # where we extracted r["caption"]). Earlier code treated it as
+            # list-of-dicts and crashed — just filter the strings.
+            recent_captions = [c for c in recent if c]
             if _hm.captions_too_similar(best["caption"], recent_captions):
                 log.warning(
                     "caption_entropy: %r too similar to recent — regenerating",

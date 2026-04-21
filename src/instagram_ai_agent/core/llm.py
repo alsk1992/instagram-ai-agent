@@ -276,6 +276,77 @@ async def _call_one(
     return text
 
 
+# Markers that signal chain-of-thought preamble from small :free models.
+# When ``strip_cot`` is enabled in generate(), we detect these and either
+# trim to the line after them or reject the response so the chain falls
+# through to the next endpoint. Real posted captions were corrupted by
+# responses like "We need to output caption text only: ..." — the model
+# spoke its reasoning out loud and we saved the reasoning as the caption.
+_COT_MARKERS = (
+    "we need to output",
+    "we need to write",
+    "we should output",
+    "we should write",
+    "we must output",
+    "the caption is:",
+    "caption text:",
+    "let me think",
+    "thinking:",
+    "analysis:",
+    "reasoning:",
+    "okay, so the",
+    "okay, let me",
+    "so we need",
+    "first, let me",
+    "here's the caption:",
+    "here is the caption:",
+    "final caption:",
+    "output:",
+)
+
+
+def _strip_cot(text: str) -> str:
+    """Strip chain-of-thought preamble from freeform LLM output.
+
+    Two-stage:
+      1. If the text starts with (or its first 600 chars contain) a CoT
+         marker, look for a later line that introduces the final answer —
+         common patterns: ``Final caption:``, ``Output:``, or a trailing
+         quoted block — and return that. Otherwise return the empty string
+         so the caller can treat this as a bad response and fall through.
+      2. If no marker is present, return the original text unchanged.
+
+    We only examine the first 600 chars for markers because legitimate
+    captions can include the word 'output' or 'we' and we don't want to
+    false-positive on a 200-word story caption that happens to contain
+    reflexive pronouns mid-text.
+    """
+    if not text:
+        return text
+    head = text[:600].lower()
+    marker_hit = any(m in head for m in _COT_MARKERS)
+    if not marker_hit:
+        return text
+
+    # Look for a final-answer introducer that tells us where the real
+    # caption starts. We try several patterns in priority order.
+    import re as _re
+    intro_patterns = [
+        r"(?:^|\n)\s*(?:final caption|final answer|output|caption|result)\s*:\s*(.+)$",
+        r'"([^"]{20,})"\s*\.?\s*$',   # last quoted block at end of text
+        r"(?:^|\n)\s*['“]([^'”]{20,})['”]\s*\.?\s*$",  # smart-quoted
+    ]
+    for pat in intro_patterns:
+        m = _re.search(pat, text, flags=_re.IGNORECASE | _re.DOTALL | _re.MULTILINE)
+        if m:
+            candidate = m.group(1).strip().strip('"').strip("'").strip()
+            if candidate and len(candidate) >= 10:
+                return candidate
+    # CoT detected but no clean answer extractable — return empty so
+    # generate()'s chain loop falls through to a different endpoint.
+    return ""
+
+
 async def generate(
     task: Task,
     prompt: str,
@@ -311,6 +382,28 @@ async def generate(
                 temperature=temperature if temperature is not None else ep.temperature,
                 json_mode=json_mode,
             )
+            # Strip chain-of-thought preamble from small :free models that
+            # spell out their reasoning before the final answer. When the
+            # response is pure CoT with no extractable answer, _strip_cot
+            # returns "" and we treat it as an endpoint failure so the
+            # next model in the chain gets a chance.
+            if not json_mode:
+                cleaned = _strip_cot(out)
+                if not cleaned:
+                    log.warning(
+                        "llm %s via %s/%s: response was chain-of-thought "
+                        "with no extractable answer — trying next",
+                        task, ep.provider, ep.model,
+                    )
+                    last_err = ValueError("chain-of-thought response")
+                    await asyncio.sleep(0.3)
+                    continue
+                if cleaned != out:
+                    log.debug(
+                        "llm %s via %s/%s: stripped CoT preamble (%d→%d chars)",
+                        task, ep.provider, ep.model, len(out), len(cleaned),
+                    )
+                out = cleaned
             log.debug("llm %s via %s/%s ok (%d chars)", task, ep.provider, ep.model, len(out))
             return out
         except RateLimitError as e:

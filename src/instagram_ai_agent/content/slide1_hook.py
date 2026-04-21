@@ -158,8 +158,34 @@ OUTPUT JSON EXACTLY:
 
     winner = data.get("winner")
     if not isinstance(winner, dict):
-        log.warning("slide1_hook: no winner field")
-        return None
+        # Synthesise from the candidates list when the model skipped the
+        # explicit "winner" key — same pattern as angle_brainstorm. Pick
+        # the candidate with the highest total score (or the first scorable
+        # one when scores are missing).
+        candidates = data.get("candidates") or []
+        scorable = [
+            c for c in candidates
+            if isinstance(c, dict) and c.get("title") and c.get("body")
+        ]
+        if not scorable:
+            log.warning("slide1_hook: no winner and no usable candidates")
+            return None
+        def _total(c: dict) -> int:
+            try:
+                return int(c.get("total") or (
+                    int(c.get("scroll_stop", 0) or 0)
+                    + int(c.get("specificity", 0) or 0)
+                    + int(c.get("curiosity", 0) or 0)
+                ))
+            except (TypeError, ValueError):
+                return 0
+        best = max(scorable, key=_total)
+        winner = {
+            "title": best.get("title", ""),
+            "body": best.get("body", ""),
+            "why": f"synthesised — highest-total candidate ({_total(best)})",
+        }
+        log.info("slide1_hook: synthesised winner from candidates")
 
     title = str(winner.get("title") or "").strip()
     body = str(winner.get("body") or "").strip()
