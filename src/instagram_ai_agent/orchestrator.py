@@ -37,7 +37,7 @@ from instagram_ai_agent.brain import (
     events as events_mod,
 )
 from instagram_ai_agent.content import pipeline as content_pipeline
-from instagram_ai_agent.content.generators import carousel_repurpose, quote_card
+from instagram_ai_agent.content.generators import carousel, carousel_repurpose, quote_card
 from instagram_ai_agent.core import alerts, db
 from instagram_ai_agent.core.config import (
     ROOT,
@@ -78,6 +78,46 @@ def _writes_gated() -> bool:
     only meaningful for aged accounts — empty IG_REST_UNTIL = no-op."""
     from instagram_ai_agent.core import gates
     return _paused() or gates.writes_blocked()
+
+
+# IG shortcode alphabet — base64url variant used by Instagram to encode
+# media PKs into the short URLs you see in-app (/p/{code}/).
+_IG_SHORTCODE_ALPHABET = (
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+)
+
+
+def _ig_post_url(media_pk: str | int) -> str:
+    """Turn a numeric IG media PK into the canonical /p/{shortcode}/ URL.
+    Pure math — no API call needed, works offline. Returns the pk form on
+    any conversion failure so we always have *something* to show the user."""
+    try:
+        pk = int(media_pk)
+    except (TypeError, ValueError):
+        return f"(pk={media_pk}, check your grid)"
+    if pk <= 0:
+        return f"(pk={media_pk}, check your grid)"
+    code = ""
+    while pk > 0:
+        code = _IG_SHORTCODE_ALPHABET[pk & 63] + code
+        pk >>= 6
+    return f"https://www.instagram.com/p/{code}/"
+
+
+async def _compose_caption(cfg, content) -> str:
+    """Best-effort caption for the smoke post. Uses the normal caption
+    pipeline so the output matches what regular posts will look like."""
+    try:
+        from instagram_ai_agent.content.captions import generate_caption
+        return await generate_caption(
+            cfg,
+            content.format,
+            context=content.caption_context or content.visible_text or "",
+        )
+    except Exception as e:
+        log.warning("smoke_post: caption generation failed — %s", e)
+        # Fall back to a terse caption built from the first meaningful slide
+        return (content.visible_text or "").strip()[:200] or "✨"
 
 
 class Orchestrator:
@@ -706,20 +746,39 @@ class Orchestrator:
         log.info("smoke_post: starting one-shot pipeline confirmation")
         try:
             await alerts.send("smoke-test post starting (one-shot pipeline check)…", level="info")
-            content = await quote_card.generate(self.cfg)
-            if not content.media_paths:
-                raise RuntimeError("quote_card produced no media")
-            caption = (content.visible_text or "").strip() or "✨"
-            media_pk = self.ig.upload_photo(content.media_paths[0], caption)
+            # Use a carousel for the smoke post — richer format, niche-
+            # relevant content (step-by-step guides fit fitness/calisthenics
+            # better than invented aphorisms), and no ffmpeg/stock-API
+            # dependencies. Falls back to quote_card if carousel fails.
+            caption: str
+            media_paths: list[str]
+            fmt: str
             try:
-                code = self.ig.cl.media_pk_to_code(int(media_pk))
-                url = f"https://www.instagram.com/p/{code}/"
-            except Exception:
-                url = f"(pk={media_pk}, check your grid)"
+                content = await carousel.generate(self.cfg, slides=6)
+                fmt = "carousel"
+            except Exception as car_err:
+                log.warning("smoke_post: carousel failed (%s) — falling back to quote_card", car_err)
+                content = await quote_card.generate(self.cfg)
+                fmt = "quote_card"
+            if not content.media_paths:
+                raise RuntimeError(f"{fmt} produced no media")
+            media_paths = content.media_paths
+            # Generate an actual caption from the content context rather than
+            # echoing the raw visible_text (which for quote_card is the quote
+            # itself, pointless to duplicate; for carousels is just slide
+            # summaries).
+            caption = await _compose_caption(self.cfg, content) or "✨"
+
+            if fmt == "carousel" and len(media_paths) > 1:
+                media_pk = self.ig.upload_album(media_paths, caption)
+            else:
+                media_pk = self.ig.upload_photo(media_paths[0], caption)
+
+            url = _ig_post_url(media_pk)
             db.state_set("smoke_post_done", db.now_iso())
-            log.info("smoke_post: ✓ posted media_pk=%s url=%s", media_pk, url)
+            log.info("smoke_post: ✓ posted %s media_pk=%s url=%s", fmt, media_pk, url)
             await alerts.send(
-                f"smoke-test post live → <a href='{url}'>{url}</a>",
+                f"smoke-test post live ({fmt}) → <a href='{url}'>{url}</a>",
                 level="ok",
             )
         except Exception as e:
