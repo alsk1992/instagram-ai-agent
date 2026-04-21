@@ -71,6 +71,12 @@ dependencies = [
     # lives in content/generators/reel_transform.py.
     "yt-dlp>=2025.1",
 
+    # Structured-output via tool-calling + retry-on-validation-error.
+    # Replaces our hand-rolled parse/coerce/repair logic for the callers
+    # that need strict Pydantic-validated JSON (angle_brainstorm,
+    # slide1_hook, trend_miner). Dict-based callers keep the legacy path.
+    "instructor>=1.5",
+
     # Alerts
     "aiohttp>=3.10",
 

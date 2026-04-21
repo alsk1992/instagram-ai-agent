@@ -312,6 +312,17 @@ def init(
 
     has_gpu = questionary.confirm("Do you have a local NVIDIA GPU?", default=False).ask()
 
+    # Pull highlights defaults from the chosen preset if one exists.
+    from instagram_ai_agent.core.config import HighlightCategory, HighlightsConfig
+    highlight_cats: list[HighlightCategory] = []
+    if preset and preset.highlights:
+        for h in preset.highlights:
+            highlight_cats.append(HighlightCategory(**h))
+    highlights_cfg = HighlightsConfig(
+        enabled=bool(highlight_cats),
+        categories=highlight_cats,
+    )
+
     cfg = NicheConfig(
         niche=niche.strip(),
         sub_topics=sub_topics,
@@ -336,6 +347,7 @@ def init(
         reference_accounts=[r.lstrip("@") for r in reference_accounts],
         watch_target=watch_target.lstrip("@") if watch_target else None,
         has_gpu=has_gpu,
+        highlights=highlights_cfg,
     )
     save_niche(cfg)
     console.print(f"[green]Wrote[/green] {NICHE_PATH}")

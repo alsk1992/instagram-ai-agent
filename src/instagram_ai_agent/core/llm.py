@@ -17,7 +17,9 @@ import random
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
+
+from pydantic import BaseModel, ValidationError
 
 import httpx
 from openai import AsyncOpenAI
@@ -456,6 +458,145 @@ def _strip_json(raw: str) -> str:
     if m2:
         return s[m2.start():]
     return s
+
+
+_M = TypeVar("_M", bound=BaseModel)
+
+
+async def generate_json_model(
+    task: Task,
+    prompt: str,
+    response_model: type[_M],
+    *,
+    system: str | None = None,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    max_retries: int = 3,
+) -> _M:
+    """Structured-output generation via tool-calling + Pydantic validation
+    with automatic retry-on-validation-error (the instructor pattern).
+
+    Why this exists: small :free models regularly emit JSON that parses
+    but is missing fields the caller needs. Our previous fix was parse +
+    coerce + repair + chain-iterate, which was a band-aid. The proper
+    2026 pattern — used by every production LLM pipeline — is:
+
+      1. Wrap the OpenAI-compat client with instructor.from_openai()
+         in TOOLS mode. The model emits the output as a function-call
+         argument, which is a far more constrained decoder path than
+         response_format=json_object.
+      2. instructor validates the arguments against the Pydantic model.
+      3. On ValidationError, instructor retries WITH the error message as
+         additional context — the model sees exactly what it got wrong
+         and self-corrects.
+
+    Tool-calling is supported across the JSON_CHAIN pool (Nemotron-120B,
+    Gemma-4-31B, Nemotron-Nano-30B, Gemma-4-26B, Trinity-Large all ship
+    tool-calling per OpenRouter's capability endpoint).
+
+    Falls back to no-tools mode if an endpoint rejects the ``tools`` param.
+    Chains through endpoints like generate_json does — a validation failure
+    after max_retries on endpoint A moves to endpoint B.
+    """
+    # Deferred import — instructor is optional-but-recommended.
+    try:
+        import instructor  # type: ignore[import-not-found]
+    except ImportError as e:
+        raise RuntimeError(
+            "generate_json_model requires the `instructor` package. "
+            "Run `pipx inject instagram-ai-agent instructor` or "
+            "`pip install instructor>=1.5`."
+        ) from e
+
+    enriched = (
+        (system or "")
+        + "\nReturn the result via the provided tool. "
+        + "Fill every required field. No prose commentary."
+    ).strip()
+    messages: list[dict[str, Any]] = []
+    if enriched:
+        messages.append({"role": "system", "content": enriched})
+    messages.append({"role": "user", "content": prompt})
+
+    default_mt, default_temp = _JSON_TASK_DEFAULTS.get(task, (2048, 0.2))
+    effective_temp = temperature if temperature is not None else default_temp
+    effective_mt = max_tokens or default_mt
+
+    last_err: Exception | None = None
+    for ep in JSON_CHAIN:
+        raw_client = _client_for(ep)
+        if raw_client is None:
+            continue
+        cooling = _is_cooling_down(ep)
+        if cooling > 0:
+            continue
+
+        # Wrap each endpoint's client with instructor. Use TOOLS mode —
+        # more reliable than JSON_MODE across OpenRouter's :free fleet.
+        try:
+            inst_client = instructor.from_openai(raw_client, mode=instructor.Mode.TOOLS)
+        except Exception as e:
+            log.warning(
+                "instructor wrap failed for %s/%s — %s (skipping)",
+                ep.provider, ep.model, e,
+            )
+            continue
+
+        try:
+            result = await inst_client.chat.completions.create(
+                model=ep.model,
+                response_model=response_model,
+                messages=messages,
+                max_tokens=effective_mt,
+                temperature=effective_temp,
+                max_retries=max_retries,
+            )
+            log.debug(
+                "llm_json_model %s via %s/%s ok (retries used internally)",
+                task, ep.provider, ep.model,
+            )
+            return result
+        except RateLimitError as e:
+            _park(ep, _retry_after_seconds(e) or _DEFAULT_COOLDOWN_S)
+            last_err = e
+            continue
+        except APIStatusError as e:
+            code = getattr(e, "status_code", None)
+            if code == 429:
+                _park(ep, _retry_after_seconds(e) or _DEFAULT_COOLDOWN_S)
+            elif code and code >= 500:
+                await asyncio.sleep(0.5 + random.random())
+            log.warning(
+                "llm_json_model %s via %s/%s failed (%s): %s",
+                task, ep.provider, ep.model, code, str(e)[:200],
+            )
+            last_err = e
+            continue
+        except ValidationError as e:
+            # instructor exhausted its internal retries for this endpoint.
+            # Move to the next model — a bigger/different architecture may
+            # succeed where this one couldn't match the schema.
+            log.warning(
+                "llm_json_model %s via %s/%s: schema validation failed after "
+                "%d retries — trying next endpoint (%s)",
+                task, ep.provider, ep.model, max_retries, str(e)[:200],
+            )
+            last_err = e
+            continue
+        except Exception as e:
+            # Includes tool-calling-not-supported, empty completion, etc.
+            msg = str(e)
+            level = log.debug if "Empty completion" in msg else log.warning
+            level(
+                "llm_json_model %s via %s/%s failed: %s",
+                task, ep.provider, ep.model, msg[:200],
+            )
+            last_err = e
+            continue
+
+    raise AllProvidersFailed(
+        f"All providers failed for JSON-model task={task} model={response_model.__name__}: {last_err!r}"
+    ) from last_err
 
 
 async def generate_json(

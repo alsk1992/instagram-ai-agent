@@ -276,6 +276,41 @@ class Orchestrator:
         except Exception:
             log.exception("job_homepage_feed failed")
 
+    async def job_highlights_bootstrap(self) -> None:
+        """Ensure every configured Story Highlight category exists on the
+        profile. Runs once at boot + daily (cheap no-op when highlights
+        already exist — idempotent via title lookup). Generates branded
+        covers via Pillow for new highlights.
+        """
+        if _writes_gated():
+            return
+        if not self.cfg.highlights.enabled:
+            return
+        # Guard: stamp-file so we don't re-run bootstrap every cycle of the
+        # day. Once per calendar day is plenty.
+        from datetime import datetime as _dt
+        today = _dt.now(UTC).strftime("%Y-%m-%d")
+        stamp_key = f"highlights_bootstrapped_{today}"
+        if db.state_get(stamp_key):
+            return
+        try:
+            from pathlib import Path as _Path
+            from instagram_ai_agent.plugins import highlights
+            from instagram_ai_agent.core.config import DATA_DIR
+            covers_dir = _Path(DATA_DIR) / "highlight_covers"
+            result = highlights.bootstrap(self.cfg, self.ig, covers_dir)
+            if result.created:
+                log.info("highlights_bootstrap: created %s", result.created)
+                await alerts.send(
+                    f"Highlights bootstrapped: {', '.join(result.created)}",
+                    level="ok",
+                )
+            if result.skipped:
+                log.warning("highlights_bootstrap: skipped %s (will retry)", result.skipped)
+            db.state_set(stamp_key, "1")
+        except Exception:
+            log.exception("job_highlights_bootstrap failed")
+
     def job_seed_dm(self) -> None:
         try:
             n = dm_seeder.run_once(self.cfg)
@@ -716,6 +751,16 @@ class Orchestrator:
                 max_instances=1,
                 coalesce=True,
             )
+        # Story Highlights bootstrap — runs daily. Creates any missing
+        # highlight categories with generated branded covers. Idempotent.
+        if self.cfg.highlights.enabled:
+            self.scheduler.add_job(
+                self.job_highlights_bootstrap,
+                CronTrigger(hour=8, minute=15, timezone="UTC"),
+                id="highlights_bootstrap",
+                max_instances=1,
+                coalesce=True,
+            )
         # DM pipeline: only schedule if DM budget > 0 (otherwise it's disabled)
         if self.cfg.budget.dms > 0:
             self.scheduler.add_job(
@@ -828,6 +873,11 @@ class Orchestrator:
         # One-shot smoke-test post (IG_SMOKE_POST=1, gated by stamp file).
         # Sleeps internally for 3 min then posts — fire-and-forget here.
         asyncio.create_task(self._smoke_post())
+
+        # Highlights bootstrap on boot so first run provisions immediately
+        # (the cron job keeps it healthy from day 2 onward).
+        if self.cfg.highlights.enabled:
+            _delayed(self.job_highlights_bootstrap, 90)
         await self._stop.wait()
 
     async def _first_post_kick(self) -> None:

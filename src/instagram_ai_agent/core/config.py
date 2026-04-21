@@ -286,6 +286,33 @@ class Budget(BaseModel):
     story_views: int = 400
 
 
+class HighlightCategory(BaseModel):
+    """A single Story Highlight category on the profile.
+
+    When a story is posted with matching ``keywords`` in its meta, it gets
+    auto-promoted to this highlight. Covers are generated from ``icon`` +
+    ``color`` — a solid-color circle with a white letter/emoji mark.
+    """
+    name: str                                  # "Workouts", "Form", ...
+    keywords: list[str] = Field(default_factory=list)  # match story tags/topics
+    icon: str = "▪"                            # single char / short text
+    color: str = "#0a0a0a"                     # hex of background color
+
+
+class HighlightsConfig(BaseModel):
+    """Story Highlights — the most-visited real estate on a profile page.
+    When ``enabled``, the orchestrator bootstraps these categories on first
+    run (creating a seed story per highlight so IG has something to pin),
+    then auto-promotes matching future stories into them.
+    """
+    enabled: bool = False
+    # 6-9 categories is the sweet spot — first 3 carry ~80% of taps.
+    categories: list[HighlightCategory] = Field(default_factory=list)
+    # Safe daily write cap per operator consensus (adds + removes + cover
+    # changes). Below this, IG's profile-editing spam detector ignores us.
+    max_writes_per_day: int = Field(default=10, ge=0, le=30)
+
+
 class MusicConfig(BaseModel):
     """Music bed for reels + story videos.
 
@@ -678,6 +705,11 @@ class NicheConfig(BaseModel):
     # standalone scheduled job; when it finds an eligible reel it
     # enqueues a `carousel` row — the format picker never touches it.
     reel_repurpose: ReelRepurposeConfig = Field(default_factory=ReelRepurposeConfig)
+
+    # Story Highlights — pinned categories on the profile page. When
+    # enabled, the orchestrator bootstraps ``categories`` on first run
+    # and auto-promotes future stories into the matching highlight.
+    highlights: HighlightsConfig = Field(default_factory=HighlightsConfig)
 
     # Brand LoRA — activated per-image via ComfyUI's LoraLoader node.
     lora: LoRAConfig = Field(default_factory=LoRAConfig)

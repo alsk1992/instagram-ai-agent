@@ -17,10 +17,35 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pydantic import BaseModel, Field
+
 from instagram_ai_agent.content import voice_fingerprint
 from instagram_ai_agent.core.config import NicheConfig
-from instagram_ai_agent.core.llm import generate_json
+from instagram_ai_agent.core.llm import generate_json_model
 from instagram_ai_agent.core.logging_setup import get_logger
+
+
+# ─── Pydantic schema ─────────────────────────────────────────────────
+# Tool-calling output — instructor auto-retries until this validates.
+class _ScoredAngle(BaseModel):
+    angle: str = Field(..., description="A specific claim or framing — NOT a topic. A sentence that takes a position.")
+    hook: str = Field(..., description="Scroll-stopping hook under 12 words. Must contain a number, name, or concrete noun.")
+    source_signal: str = Field("", description="Which piece of research context inspired this angle.")
+    specificity: int = Field(..., ge=0, le=10, description="0-10, concrete vs generic.")
+    hook_strength: int = Field(..., ge=0, le=10, description="0-10, scroll-stop potential.")
+    evidence_anchor: int = Field(..., ge=0, le=10, description="0-10, can body cite study/data/quote/lived experience.")
+    total: int = Field(0, description="specificity + hook_strength + evidence_anchor (computed).")
+
+
+class _WinnerPick(BaseModel):
+    angle: str = Field(..., description="The winning angle — one full sentence with a specific claim.")
+    hook: str = Field(..., description="The winning hook — under 12 words, specific.")
+    why: str = Field(..., description="ONE sentence explaining why this wins the rubric.")
+
+
+class _BrainstormResponse(BaseModel):
+    angles: list[_ScoredAngle] = Field(..., min_length=3, description="List of scored angles, at least 3.")
+    winner: _WinnerPick = Field(..., description="The highest-total angle, re-stated.")
 
 log = get_logger(__name__)
 
@@ -144,54 +169,44 @@ OUTPUT JSON EXACTLY:
 """
 
     try:
-        data = await generate_json(
+        response = await generate_json_model(
             "bulk",
             prompt,
+            _BrainstormResponse,
             system=system,
             max_tokens=2048,
             temperature=0.85,
         )
     except Exception as e:
-        log.warning("angle_brainstorm: LLM call failed — %s", e)
+        log.warning("angle_brainstorm: all JSON_CHAIN endpoints failed schema — %s", str(e)[:200])
         return None
 
-    if not isinstance(data, dict):
-        log.warning("angle_brainstorm: expected dict, got %s", type(data).__name__)
-        return None
-
-    winner = data.get("winner")
-    if not isinstance(winner, dict):
-        # Synthesise the winner from the scored angles list — we have the
-        # totals, so picking the highest is trivial. Some models skip the
-        # explicit "winner" key even when the instruction demands it.
-        angles_list = data.get("angles") or []
-        scorable = [
-            a for a in angles_list
-            if isinstance(a, dict) and a.get("angle") and a.get("hook")
-        ]
-        if not scorable:
-            log.warning("angle_brainstorm: no winner and no usable angles in response")
-            return None
-        def _total(a: dict) -> int:
-            try:
-                return int(a.get("total") or (
-                    int(a.get("specificity", 0) or 0)
-                    + int(a.get("hook_strength", 0) or 0)
-                    + int(a.get("evidence_anchor", 0) or 0)
-                ))
-            except (TypeError, ValueError):
-                return 0
-        best = max(scorable, key=_total)
-        winner = {
-            "angle": best.get("angle", ""),
-            "hook": best.get("hook", ""),
-            "why": f"highest-total angle ({_total(best)}) among {len(scorable)}",
-        }
-        log.info("angle_brainstorm: synthesised winner from angles (model omitted 'winner' key)")
-
-    angle = str(winner.get("angle") or "").strip()
-    hook = str(winner.get("hook") or "").strip()
-    why = str(winner.get("why") or "").strip()
+    # Pydantic already validated shape + required fields. If the model's
+    # self-picked winner is weaker than a scored angle (some models pick
+    # randomly despite the instruction), prefer the highest-total scored
+    # angle — we have the scores, use them.
+    if response.angles:
+        best = max(
+            response.angles,
+            key=lambda a: (a.total or a.specificity + a.hook_strength + a.evidence_anchor),
+        )
+        best_total = best.total or (best.specificity + best.hook_strength + best.evidence_anchor)
+        winner_total = 0  # model-declared winner doesn't carry a total; trust our rubric
+        if best_total > winner_total and best.angle != response.winner.angle:
+            log.debug(
+                "angle_brainstorm: overriding model winner with highest-total scored angle",
+            )
+            angle = best.angle.strip()
+            hook = best.hook.strip()
+            why = f"highest-total scored angle ({best_total})"
+        else:
+            angle = response.winner.angle.strip()
+            hook = response.winner.hook.strip()
+            why = response.winner.why.strip() or f"rubric pick ({best_total})"
+    else:
+        angle = response.winner.angle.strip()
+        hook = response.winner.hook.strip()
+        why = response.winner.why.strip()
 
     if not angle or not hook:
         log.warning("angle_brainstorm: winner missing angle/hook (angle=%r hook=%r)", angle, hook)
@@ -203,7 +218,7 @@ OUTPUT JSON EXACTLY:
         log.warning("angle_brainstorm: winner hook %r contains a forbidden cliché", hook)
         return None
 
-    n_generated = len(data.get("angles") or [])
+    n_generated = len(response.angles)
     log.info(
         "angle_brainstorm: %d angles → winner hook=%r",
         n_generated, hook[:80],

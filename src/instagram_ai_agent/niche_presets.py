@@ -31,6 +31,10 @@ class Preset:
     best_hours_utc: list[int]
     watermark_hint: str = "@yourhandle"
     format_weights: dict[str, float] = field(default_factory=dict)
+    # Story Highlights defaults — 6-9 categories ordered with
+    # highest-tap-rate first. Keywords decide which fresh story each
+    # highlight absorbs; icon/color drive the generated cover image.
+    highlights: list[dict[str, Any]] = field(default_factory=list)
 
 
 PRESETS: list[Preset] = [
@@ -49,6 +53,28 @@ PRESETS: list[Preset] = [
         best_hours_utc=[12, 17, 21],
         format_weights={"meme": 0.25, "quote_card": 0.15, "carousel": 0.25,
                         "reel_stock": 0.25, "reel_ai": 0.05, "photo": 0.05},
+        # 8 highlight categories ordered by expected tap rate. Research-
+        # consensus layout for fitness/calisthenics growth pages. First
+        # 3 slots carry ~80% of taps; Start Here + Free Program are the
+        # top conversion drivers.
+        highlights=[
+            {"name": "Start Here",  "icon": "★",  "color": "#c9a961",
+             "keywords": ["start here", "intro", "welcome", "about"]},
+            {"name": "Workouts",    "icon": "💪", "color": "#0a0a0a",
+             "keywords": ["workout", "routine", "session", "wod"]},
+            {"name": "Form",        "icon": "✓",  "color": "#1a3a2e",
+             "keywords": ["form", "technique", "how to", "posture", "alignment"]},
+            {"name": "Progressions","icon": "↗",  "color": "#34495e",
+             "keywords": ["progression", "beginner", "intermediate", "advanced", "ladder"]},
+            {"name": "Mobility",    "icon": "~",  "color": "#5d4e6d",
+             "keywords": ["mobility", "stretch", "warmup", "flexibility"]},
+            {"name": "Home",        "icon": "⌂",  "color": "#3a3a3a",
+             "keywords": ["home workout", "no gym", "no equipment", "bodyweight"]},
+            {"name": "Transformations","icon": "→", "color": "#8b3a2c",
+             "keywords": ["transformation", "before", "after", "week", "progress"]},
+            {"name": "FAQ",         "icon": "?",  "color": "#2c3e50",
+             "keywords": ["faq", "question", "ask", "q&a", "answered"]},
+        ],
     ),
     Preset(
         key="food",

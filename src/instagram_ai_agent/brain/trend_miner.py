@@ -3,16 +3,29 @@ from __future__ import annotations
 
 import random
 
+from pydantic import BaseModel, Field
+
 from instagram_ai_agent.brain.scraper import PublicScraper
 from instagram_ai_agent.core import db
 from instagram_ai_agent.core.config import NicheConfig
-from instagram_ai_agent.core.llm import generate_json
+from instagram_ai_agent.core.llm import generate_json_model
 from instagram_ai_agent.core.logging_setup import get_logger
 
 log = get_logger(__name__)
 
 
-async def _cluster(cfg: NicheConfig, samples: list[dict]) -> dict:
+class _Theme(BaseModel):
+    label: str = Field(..., description="Short theme name — 2-5 words.")
+    angle: str = Field(..., description="The niche-specific angle, ≤18 words.")
+    post_idea: str = Field(..., description="Concrete single-post suggestion.")
+
+
+class _TrendClusterResponse(BaseModel):
+    themes: list[_Theme] = Field(..., min_length=3, max_length=5, description="3-5 distinct themes.")
+    banned_tags: list[str] = Field(default_factory=list, description="Tags that looked like spam / off-topic.")
+
+
+async def _cluster(cfg: NicheConfig, samples: list[dict]) -> _TrendClusterResponse:
     joined = "\n---\n".join(
         f"#{s['hashtag']} · {s['likes']}👍: {s['caption'][:180]}" for s in samples[:30]
     )
@@ -23,13 +36,14 @@ async def _cluster(cfg: NicheConfig, samples: list[dict]) -> dict:
     )
     prompt = (
         f"Sample posts across niche hashtags:\n{joined}\n\n"
-        "Return JSON: {\n"
-        "  \"themes\":       [ {\"label\": str, \"angle\": str, \"post_idea\": str}, ... ],\n"
-        "  \"banned_tags\":  [ str, ... ]   // tags that looked like spam / off-topic\n"
-        "}\n"
-        "Exactly 3–5 themes. `angle` is ≤18 words. `post_idea` is a concrete single post suggestion."
+        "Cluster the posts into 3-5 distinct themes. Each theme has a short label, "
+        "a niche-specific angle (≤18 words), and a concrete post_idea. "
+        "Also list any hashtags that looked like spam or off-topic."
     )
-    return await generate_json("analyze", prompt, system=system, max_tokens=2500)
+    return await generate_json_model(
+        "analyze", prompt, _TrendClusterResponse,
+        system=system, max_tokens=2500,
+    )
 
 
 async def run_once(cfg: NicheConfig, scraper: PublicScraper | None = None) -> int:
@@ -59,13 +73,13 @@ async def run_once(cfg: NicheConfig, scraper: PublicScraper | None = None) -> in
     try:
         analysis = await _cluster(cfg, samples)
     except Exception as e:
-        log.warning("Trend clustering failed: %s", e)
+        log.warning("Trend clustering failed: %s", str(e)[:200])
         return len(samples)
 
-    for t in (analysis.get("themes") or [])[:5]:
-        label = str(t.get("label") or "").strip()
-        angle = str(t.get("angle") or "").strip()
-        idea = str(t.get("post_idea") or "").strip()
+    for t in analysis.themes[:5]:
+        label = t.label.strip()
+        angle = t.angle.strip()
+        idea = t.post_idea.strip()
         if not label:
             continue
         db.narrative_bump(label, sample_ref=idea[:120] or None)
@@ -75,5 +89,5 @@ async def run_once(cfg: NicheConfig, scraper: PublicScraper | None = None) -> in
             priority=3,
         )
 
-    log.info("Trend miner: %d samples, %d themes", len(samples), len(analysis.get("themes") or []))
+    log.info("Trend miner: %d samples, %d themes", len(samples), len(analysis.themes))
     return len(samples)
